@@ -1,5 +1,5 @@
 from _context import former
-from former import util
+from former import util, GTransformer
 
 from util import d, here
 
@@ -39,47 +39,6 @@ def sample(lnprobs, temperature=1.0):
 
     return cd.sample()
 
-
-class Transformer(nn.Module):
-    """
-    Transformer for generating text (character by character).
-    """
-
-    def __init__(self, emb, heads, depth, seq_length, num_tokens):
-        super().__init__()
-
-        self.num_tokens = num_tokens
-        self.token_embedding = nn.Embedding(embedding_dim=emb, num_embeddings=num_tokens)
-        self.pos_embedding = nn.Embedding(embedding_dim=emb, num_embeddings=seq_length)
-
-        self.unify_embeddings = nn.Linear(2*emb, emb)
-
-        tblocks = []
-        for i in range(depth):
-            tblocks.append(
-                former.TransformerBlock(emb=emb, heads=heads, seq_length=seq_length, mask=True))
-
-        self.tblocks = nn.Sequential(*tblocks)
-
-        self.toprobs = nn.Linear(emb, num_tokens)
-
-    def forward(self, x):
-        """
-        :param x: A batch by sequence length integer tensor of token indices.
-        :return: predicted log-probability vectors for each token based on the preceding tokens.
-        """
-        tokens = self.token_embedding(x)
-        b, t, e = tokens.size()
-
-        positions = self.pos_embedding(torch.arange(t, device=d()))[None, :, :].expand(b, t, e)
-        x = self.unify_embeddings(torch.cat((tokens, positions), dim=2).view(-1, 2*e)).view(b, t, e)
-
-        x = self.tblocks(x)
-
-        x = self.toprobs(x.view(b*t, e)).view(b, t, self.num_tokens)
-
-        return F.log_softmax(x, dim=2)
-
 def enwik8(path, n_train=int(90e6), n_valid=int(5e6), n_test=int(5e6)):
     """
     Load the enwik8 dataset from the Hutter challenge.
@@ -114,7 +73,7 @@ def go(arg):
                             if arg.final else (data_train, data_val)
 
     # create the model
-    model = Transformer(emb=arg.embedding_size, heads=arg.num_heads, depth=arg.depth, seq_length=arg.context, num_tokens=NUM_TOKENS)
+    model = GTransformer(emb=arg.embedding_size, heads=arg.num_heads, depth=arg.depth, seq_length=arg.context, num_tokens=NUM_TOKENS)
     if torch.cuda.is_available():
         model.cuda()
 
