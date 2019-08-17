@@ -73,7 +73,7 @@ class SelfAttention(nn.Module):
         return self.unifyheads(out)
 
 class TransformerBlock(nn.Module):
-    def __init__(self, emb, heads, mask, seq_length, ff_hidden_mult=4):
+    def __init__(self, emb, heads, mask, seq_length, ff_hidden_mult=4, dropout=0.0):
         super().__init__()
 
         self.attention = SelfAttention(emb, heads=heads, mask=mask)
@@ -88,14 +88,20 @@ class TransformerBlock(nn.Module):
             nn.Linear(ff_hidden_mult * emb, emb)
         )
 
+        self.do = nn.Dropout(dropout)
+
     def forward(self, x):
 
         attended = self.attention(x)
 
         x = self.norm1(attended + x)
 
+        x = self.do(x)
+
         fedforward = self.ff(x)
 
         x = self.norm2(fedforward + x)
+
+        x = self.do(x)
 
         return x

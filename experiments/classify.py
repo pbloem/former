@@ -27,6 +27,7 @@ def go(arg):
     """
     Creates and trains a basic transformer for the IMDB sentiment classification task.
     """
+    tbw = SummaryWriter(log_dir=arg.tb_dir) # Tensorboard logging
 
     # load the IMDB data
     if arg.final:
@@ -48,48 +49,64 @@ def go(arg):
     print(f'- nr. of training examples {len(train_iter)}')
     print(f'- nr. of {"test" if arg.final else "validation"} examples {len(test_iter)}')
 
-    mx = max([input.text[0].size(1) for input in train_iter])
-    mx = mx * 2
-
-    print(f'- maximum sequence length: {mx}')
+    if arg.max_length < 0:
+        mx = max([input.text[0].size(1) for input in train_iter])
+        mx = mx * 2
+        print(f'- maximum sequence length: {mx}')
+    else:
+        mx = arg.max_length
 
     # create the model
-    model = former.CTransformer(emb=arg.embedding_size, heads=arg.num_heads, depth=arg.depth, seq_length=mx, num_tokens=arg.vocab_size, num_classes=NUM_CLS)
+    model = former.CTransformer(emb=arg.embedding_size, heads=arg.num_heads, depth=arg.depth, seq_length=mx, num_tokens=arg.vocab_size, num_classes=NUM_CLS, max_pool=arg.max_pool)
     if torch.cuda.is_available():
         model.cuda()
     opt = torch.optim.Adam(lr=arg.lr, params=model.parameters())
 
     # training loop
+    seen = 0
     for e in range(arg.num_epochs):
 
         print(f'\n epoch {e}')
+        model.train(True)
+
         for batch in tqdm.tqdm(train_iter):
             opt.zero_grad()
 
             input = batch.text[0]
             label = batch.label - 1
 
+            if input.size(1) > mx:
+                input = input[:, :mx]
             out = model(input)
             loss = F.nll_loss(out, label)
 
             loss.backward()
             opt.step()
 
+            seen += input.size(0)
+            tbw.add_scalar('classification/train-loss', float(loss.item()), seen)
+
         with torch.no_grad():
+
+            model.train(False)
             tot, cor= 0.0, 0.0
 
             for batch in test_iter:
-                input = batch.text[0]
 
+                input = batch.text[0]
                 label = batch.label - 1
 
-                out = model(input).argmax()
+                if input.size(1) > mx:
+                    input = input[:, :mx]
+                out = model(input).argmax(dim=1)
 
                 tot += float(input.size(0))
                 cor += float((label == out).sum().item())
 
             acc = cor / tot
             print(f'-- {"validation" if arg.final else "test"} accuracy {acc:.3}')
+            tbw.add_scalar('classification/test-loss', float(loss.item()), e)
+
 
 if __name__ == "__main__":
 
@@ -118,6 +135,10 @@ if __name__ == "__main__":
                         help="Whether to run on the real test set (if not included, the validation set is used).",
                         action="store_true")
 
+    parser.add_argument("--max-pool", dest="max_pool",
+                        help="Use max pooling in the final classification layer.",
+                        action="store_true")
+
     parser.add_argument("-E", "--embedding", dest="embedding_size",
                         help="Size of the character embeddings.",
                         default=128, type=int)
@@ -126,6 +147,9 @@ if __name__ == "__main__":
                         help="Number of words in the vocabulary.",
                         default=50_000, type=int)
 
+    parser.add_argument("-M", "--max", dest="max_length",
+                        help="Max sequence length. Longer sequences are clipped.",
+                        default=-1, type=int)
 
     parser.add_argument("-H", "--heads", dest="num_heads",
                         help="Number of attention heads.",

@@ -51,7 +51,7 @@ class CTransformer(nn.Module):
     Transformer for classifying sequences
     """
 
-    def __init__(self, emb, heads, depth, seq_length, num_tokens, num_classes, max_pool=True):
+    def __init__(self, emb, heads, depth, seq_length, num_tokens, num_classes, max_pool=True, dropout=0.0):
         """
         :param emb: Embedding dimension
         :param heads: nr. of attention heads
@@ -74,11 +74,13 @@ class CTransformer(nn.Module):
         tblocks = []
         for i in range(depth):
             tblocks.append(
-                TransformerBlock(emb=emb, heads=heads, seq_length=seq_length, mask=False))
+                TransformerBlock(emb=emb, heads=heads, seq_length=seq_length, mask=False, dropout=dropout))
 
         self.tblocks = nn.Sequential(*tblocks)
 
         self.toprobs = nn.Linear(emb, num_classes)
+
+        self.do = nn.Dropout(dropout)
 
     def forward(self, x):
         """
@@ -90,6 +92,7 @@ class CTransformer(nn.Module):
 
         positions = self.pos_embedding(torch.arange(t, device=d()))[None, :, :].expand(b, t, e)
         x = self.unify_embeddings(torch.cat((tokens, positions), dim=2).view(-1, 2 * e)).view(b, t, e)
+        x = self.do(x)
 
         x = self.tblocks(x)
 
