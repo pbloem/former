@@ -45,8 +45,10 @@ class SelfAttention(nn.Module):
         queries = queries.transpose(1, 2).contiguous().view(b * h, t, e)
         values = values.transpose(1, 2).contiguous().view(b * h, t, e)
 
-        queries = queries / math.sqrt(e)
-        values   = values  / math.sqrt(e)
+        queries = queries / (e ** (1/4))
+        values  = values  / (e ** (1/4))
+        # - Instead of dividing the dot products by sqrt(e), we scale the keys and values.
+        #   This should be more memory efficient
 
         # - get dot product of queries and keys, and scale
         dot = torch.bmm(queries, keys.transpose(1, 2))
