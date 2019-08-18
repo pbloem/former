@@ -45,9 +45,11 @@ class SelfAttention(nn.Module):
         queries = queries.transpose(1, 2).contiguous().view(b * h, t, e)
         values = values.transpose(1, 2).contiguous().view(b * h, t, e)
 
+        queries = queries / math.sqrt(e)
+        values   = values  / math.sqrt(e)
+
         # - get dot product of queries and keys, and scale
         dot = torch.bmm(queries, keys.transpose(1, 2))
-        dot = dot / math.sqrt(e) # dot contains b*h  t-by-t matrices with raw self-attention logits
 
         assert dot.size() == (b*h, t, t), f'Matrix has size {dot.size()}, expected {(b*h, t, t)}.'
 

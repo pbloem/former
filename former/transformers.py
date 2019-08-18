@@ -18,8 +18,6 @@ class GTransformer(nn.Module):
         self.token_embedding = nn.Embedding(embedding_dim=emb, num_embeddings=num_tokens)
         self.pos_embedding = nn.Embedding(embedding_dim=emb, num_embeddings=seq_length)
 
-        self.unify_embeddings = nn.Linear(2*emb, emb)
-
         tblocks = []
         for i in range(depth):
             tblocks.append(
@@ -38,7 +36,7 @@ class GTransformer(nn.Module):
         b, t, e = tokens.size()
 
         positions = self.pos_embedding(torch.arange(t, device=d()))[None, :, :].expand(b, t, e)
-        x = self.unify_embeddings(torch.cat((tokens, positions), dim=2).view(-1, 2*e)).view(b, t, e)
+        x = tokens + positions
 
         x = self.tblocks(x)
 
@@ -69,8 +67,6 @@ class CTransformer(nn.Module):
         self.token_embedding = nn.Embedding(embedding_dim=emb, num_embeddings=num_tokens)
         self.pos_embedding = nn.Embedding(embedding_dim=emb, num_embeddings=seq_length)
 
-        self.unify_embeddings = nn.Linear(2 * emb, emb)
-
         tblocks = []
         for i in range(depth):
             tblocks.append(
@@ -91,7 +87,7 @@ class CTransformer(nn.Module):
         b, t, e = tokens.size()
 
         positions = self.pos_embedding(torch.arange(t, device=d()))[None, :, :].expand(b, t, e)
-        x = self.unify_embeddings(torch.cat((tokens, positions), dim=2).view(-1, 2 * e)).view(b, t, e)
+        x = tokens + positions
         x = self.do(x)
 
         x = self.tblocks(x)
