@@ -70,6 +70,13 @@ def go(arg):
         model.train(True)
 
         for batch in tqdm.tqdm(train_iter):
+            # learning rate warmup
+            # - we linearly increase the learning rate from 10e-10 to arg.lr over the first
+            #   few thousand batches
+            if arg.lr_warmup > 0 and seen < arg.lr_warmup:
+                lr = max((arg.lr / arg.lr_warmup) * seen, 1e-10)
+                opt.lr = lr
+
             opt.zero_grad()
 
             input = batch.text[0]
@@ -81,6 +88,12 @@ def go(arg):
             loss = F.nll_loss(out, label)
 
             loss.backward()
+
+            # clip gradients
+            # - If the total gradient vector has a length > 1, we clip it back down to 1.
+            if arg.gradient_clipping > 0.0:
+                nn.utils.clip_grad_norm_(model.parameters(), arg.gradient_clipping)
+
             opt.step()
 
             seen += input.size(0)
@@ -104,7 +117,7 @@ def go(arg):
                 cor += float((label == out).sum().item())
 
             acc = cor / tot
-            print(f'-- {"validation" if arg.final else "test"} accuracy {acc:.3}')
+            print(f'-- {"test" if arg.final else "validation"} accuracy {acc:.3}')
             tbw.add_scalar('classification/test-loss', float(loss.item()), e)
 
 
@@ -163,6 +176,16 @@ if __name__ == "__main__":
                         dest="seed",
                         help="RNG seed. Negative for random",
                         default=1, type=int)
+
+    parser.add_argument("--lr-warmup",
+                        dest="lr_warmup",
+                        help="Learning rate warmup.",
+                        default=10_000, type=int)
+
+    parser.add_argument("--gradient-clipping",
+                        dest="gradient_clipping",
+                        help="Gradient clipping.",
+                        default=1.0, type=float)
 
     options = parser.parse_args()
 
