@@ -14,6 +14,7 @@ turns out that this simple configuration often works best.
 
 # Requirements
 
-Pytorch 1.12
-tb-nightly
-numpy
+* Pytorch 1.12
+* pytorch-text
+* tb-nightly
+* numpy
