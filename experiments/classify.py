@@ -133,7 +133,7 @@ if __name__ == "__main__":
     parser.add_argument("-b", "--batch-size",
                         dest="batch_size",
                         help="The batch size.",
-                        default=64, type=int)
+                        default=4, type=int)
 
     parser.add_argument("-l", "--learn-rate",
                         dest="lr",
@@ -161,16 +161,16 @@ if __name__ == "__main__":
                         default=50_000, type=int)
 
     parser.add_argument("-M", "--max", dest="max_length",
-                        help="Max sequence length. Longer sequences are clipped.",
-                        default=-1, type=int)
+                        help="Max sequence length. Longer sequences are clipped (-1 for no limit).",
+                        default=512, type=int)
 
     parser.add_argument("-H", "--heads", dest="num_heads",
                         help="Number of attention heads.",
                         default=8, type=int)
 
     parser.add_argument("-d", "--depth", dest="depth",
-                        help="Depth of the network (nr of self-attention layers)",
-                        default=4, type=int)
+                        help="Depth of the network (nr. of self-attention layers)",
+                        default=6, type=int)
 
     parser.add_argument("-r", "--random-seed",
                         dest="seed",

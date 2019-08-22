@@ -208,10 +208,10 @@ if __name__ == "__main__":
     parser.add_argument("-b", "--batch-size",
                         dest="batch_size",
                         help="The batch size.",
-                        default=64, type=int)
+                        default=32, type=int)
 
     parser.add_argument("-D", "--data", dest="data",
-                        help="Data file. ",
+                        help="Data file. Will be read as a string of 8-bit characters.",
                         default=None)
 
     parser.add_argument("-l", "--learn-rate",
@@ -237,11 +237,11 @@ if __name__ == "__main__":
 
     parser.add_argument("-C", "--context", dest="context",
                         help="Length of the sequences extracted from the corpus (and the context used during inference).",
-                        default=32, type=int)
+                        default=256, type=int)
 
     parser.add_argument("-d", "--depth", dest="depth",
                         help="Depth of the network (nr of self-attention layers)",
-                        default=4, type=int)
+                        default=12, type=int)
 
     parser.add_argument("-r", "--random-seed",
                         dest="seed",
@@ -261,7 +261,7 @@ if __name__ == "__main__":
     parser.add_argument("--test-batchsize",
                         dest="test_batchsize",
                         help="Batch size for computing the validation loss. This can be a bit bigger than the training batch size.",
-                        default=128, type=int)
+                        default=64, type=int)
 
     parser.add_argument("--gradient-clipping",
                         dest="gradient_clipping",
