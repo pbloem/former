@@ -31,9 +31,11 @@ but I haven't tried this. It's probably easier to just copy over the code you ne
 
 ## Requirements
 
-Python 3.7 is required. I you run an earlier version, ```pip install future``` might help.
+Python 3.6+ is required.
 
 The following should install all requirements 
 ```pip install torch tb-nightly tqdm numpy torchtext```
 
-Let me know if I missed anything. 
+You may also need
+```pip install future```
+depending on the exact python version.
