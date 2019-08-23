@@ -46,7 +46,7 @@ class SelfAttention(nn.Module):
         values = values.transpose(1, 2).contiguous().view(b * h, t, e)
 
         queries = queries / (e ** (1/4))
-        values  = values  / (e ** (1/4))
+        keys    = keys / (e ** (1/4))
         # - Instead of dividing the dot products by sqrt(e), we scale the keys and values.
         #   This should be more memory efficient
 
