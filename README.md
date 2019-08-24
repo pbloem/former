@@ -39,3 +39,11 @@ The following should install all requirements
 You may also need
 ```pip install future```
 depending on the exact python version.
+
+Alternatively, install with conda:
+
+```
+conda env create -f environment.yml --name <your-environment-name>
+conda activate <your-environment-name>
+```
+
