@@ -40,10 +40,12 @@ You may also need
 ```pip install future```
 depending on the exact python version.
 
-Alternatively, install with conda:
+### conda environment
+
+The file ```environment.yml``` describes a complete conda environment with all dependencies. After cloning or downloading the project, you create the environment as follows:
 
 ```
-conda env create -f environment.yml --name <your-environment-name>
-conda activate <your-environment-name>
+conda env create -f environment.yml --name former
+conda activate former
 ```
 
