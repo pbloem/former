@@ -53,20 +53,13 @@ class SelfAttention(nn.Module):
         # - get dot product of queries and keys, and scale
         dot = torch.bmm(queries, keys.transpose(1, 2))
 
-        assert dot.size() == (b*h, t, t), f'Matrix has size {dot.size()}, expected {(b*h, t, t)}.'
+        assert dot.size() == (b*h, t, t)
 
-        if self.mask: # mask out the lower half of the dot matrix,including the diagonal
+        if self.mask: # mask out the upper half of the dot matrix, excluding the diagonal
             mask_(dot, maskval=float('-inf'), mask_diagonal=False)
 
-        dot = F.softmax(dot, dim=2) # dot now has row-wise self-attention probabilities
-
-        assert not util.contains_nan(dot[:, 1:, :]) # only the forst row may contain nan
-
-        if self.mask == 'first':
-            dot = dot.clone()
-            dot[:, :1, :] = 0.0
-            # - The first row of the first attention matrix is entirely masked out, so the softmax operation results
-            #   in a division by zero. We set this row to zero by hand to get rid of the NaNs
+        dot = F.softmax(dot, dim=2)
+        # - dot now has row-wise self-attention probabilities
 
         # apply the self attention to the values
         out = torch.bmm(dot, values).view(b, h, t, e)
