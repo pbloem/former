@@ -31,9 +31,21 @@ but I haven't tried this. It's probably easier to just copy over the code you ne
 
 ## Requirements
 
-Python 3.7 is required. I you run an earlier version, ```pip install future``` might help.
+Python 3.6+ is required.
 
 The following should install all requirements 
 ```pip install torch tb-nightly tqdm numpy torchtext```
 
-Let me know if I missed anything. 
+You may also need
+```pip install future```
+depending on the exact python version.
+
+### conda environment
+
+The file ```environment.yml``` describes a complete conda environment with all dependencies. After cloning or downloading the project, you create the environment as follows:
+
+```
+conda env create -f environment.yml --name former
+conda activate former
+```
+
