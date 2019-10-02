@@ -60,7 +60,9 @@ def go(arg):
     model = former.CTransformer(emb=arg.embedding_size, heads=arg.num_heads, depth=arg.depth, seq_length=mx, num_tokens=arg.vocab_size, num_classes=NUM_CLS, max_pool=arg.max_pool)
     if torch.cuda.is_available():
         model.cuda()
+
     opt = torch.optim.Adam(lr=arg.lr, params=model.parameters())
+    sch = torch.optim.lr_scheduler.LambdaLR(opt, lambda i: min(i / (arg.lr_warmup / arg.batch_size), 1.0))
 
     # training loop
     seen = 0
@@ -70,12 +72,6 @@ def go(arg):
         model.train(True)
 
         for batch in tqdm.tqdm(train_iter):
-            # learning rate warmup
-            # - we linearly increase the learning rate from 10e-10 to arg.lr over the first
-            #   few thousand batches
-            if arg.lr_warmup > 0 and seen < arg.lr_warmup:
-                lr = max((arg.lr / arg.lr_warmup) * seen, 1e-10)
-                opt.lr = lr
 
             opt.zero_grad()
 
@@ -95,6 +91,7 @@ def go(arg):
                 nn.utils.clip_grad_norm_(model.parameters(), arg.gradient_clipping)
 
             opt.step()
+            sch.step()
 
             seen += input.size(0)
             tbw.add_scalar('classification/train-loss', float(loss.item()), seen)

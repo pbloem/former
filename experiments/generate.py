@@ -77,18 +77,14 @@ def go(arg):
     if torch.cuda.is_available():
         model.cuda()
 
+
     opt = torch.optim.Adam(lr=arg.lr, params=model.parameters())
+    # linear learning rate warmup
+    sch = torch.optim.lr_scheduler.LambdaLR(opt, lambda i: min(i / (arg.lr_warmup / arg.batch_size), 1.0))
 
     # training loop
     # - note: we don't loop over the data, instead we sample a batch of random subsequences each time.
     for i in tqdm.trange(arg.num_batches):
-
-        # learning rate warmup
-        # - we linearly increase the learning rate from 10e-10 to arg.lr over the first
-        #   few thousand batches
-        if arg.lr_warmup > 0 and i < arg.lr_warmup:
-            lr = max(  (arg.lr / arg.lr_warmup) * i, 1e-10)
-            opt.lr = lr
 
         opt.zero_grad()
 
@@ -117,6 +113,7 @@ def go(arg):
             nn.utils.clip_grad_norm_(model.parameters(), arg.gradient_clipping)
 
         opt.step()
+        sch.step()
 
         # - validate every {arg.test_every} steps. First we compute the
         #   compression on the validation (or a subset)
@@ -272,6 +269,10 @@ if __name__ == "__main__":
                         dest="lr_warmup",
                         help="Learning rate warmup.",
                         default=5000, type=int)
+
+    parser.add_argument("--wide", dest="wide",
+                        help="Use wide self attention instead of narrow self attention.",
+                        action="store_true")
 
     options = parser.parse_args()
 

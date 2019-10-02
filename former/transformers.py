@@ -11,7 +11,7 @@ class GTransformer(nn.Module):
     Transformer for generating text (character by character).
     """
 
-    def __init__(self, emb, heads, depth, seq_length, num_tokens):
+    def __init__(self, emb, heads, depth, seq_length, num_tokens, wide=False):
         super().__init__()
 
         self.num_tokens = num_tokens
@@ -21,7 +21,7 @@ class GTransformer(nn.Module):
         tblocks = []
         for i in range(depth):
             tblocks.append(
-                TransformerBlock(emb=emb, heads=heads, seq_length=seq_length, mask=True))
+                TransformerBlock(emb=emb, heads=heads, seq_length=seq_length, mask=True, wide=wide))
 
         self.tblocks = nn.Sequential(*tblocks)
 
@@ -29,7 +29,7 @@ class GTransformer(nn.Module):
 
     def forward(self, x):
         """
-        :param x: A batch by sequence length integer tensor of token indices.
+        :param x: A (batch, sequence length) integer tensor of token indices.
         :return: predicted log-probability vectors for each token based on the preceding tokens.
         """
         tokens = self.token_embedding(x)
@@ -49,7 +49,7 @@ class CTransformer(nn.Module):
     Transformer for classifying sequences
     """
 
-    def __init__(self, emb, heads, depth, seq_length, num_tokens, num_classes, max_pool=True, dropout=0.0):
+    def __init__(self, emb, heads, depth, seq_length, num_tokens, num_classes, max_pool=True, dropout=0.0, wide=False):
         """
         :param emb: Embedding dimension
         :param heads: nr. of attention heads
@@ -70,7 +70,7 @@ class CTransformer(nn.Module):
         tblocks = []
         for i in range(depth):
             tblocks.append(
-                TransformerBlock(emb=emb, heads=heads, seq_length=seq_length, mask=False, dropout=dropout))
+                TransformerBlock(emb=emb, heads=heads, seq_length=seq_length, mask=False, dropout=dropout, wide=wide))
 
         self.tblocks = nn.Sequential(*tblocks)
 
