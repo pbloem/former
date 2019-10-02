@@ -73,7 +73,7 @@ def go(arg):
                             if arg.final else (data_train, data_val)
 
     # create the model
-    model = GTransformer(emb=arg.embedding_size, heads=arg.num_heads, depth=arg.depth, seq_length=arg.context, num_tokens=NUM_TOKENS)
+    model = GTransformer(emb=arg.embedding_size, heads=arg.num_heads, depth=arg.depth, seq_length=arg.context, num_tokens=NUM_TOKENS, wide=arg.wide)
     if torch.cuda.is_available():
         model.cuda()
 
