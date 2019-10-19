@@ -132,7 +132,7 @@ def go(arg):
             with torch.no_grad():
 
                 plt.cla()
-                util.cosine_heatmap(model.pos_embedding(torch.arange(arg.context)), ax=plt.gca())
+                util.cosine_heatmap(model.pos_embedding(torch.arange(arg.context), device=d()), ax=plt.gca())
                 plt.savefig(f'./plots/cosine-heatmap.{i:06}.png')
                 print('.')
 
