@@ -1,4 +1,6 @@
-import torch, os
+import torch, os, errno
+
+from torch.autograd import Variable
 
 def mask_(matrices, maskval=0.0, mask_diagonal=True):
     """
@@ -38,3 +40,10 @@ def here(subpath=None):
 
 def contains_nan(tensor):
     return bool((tensor != tensor).sum() > 0)
+
+def makedirs(directory):
+    try:
+        os.makedirs(directory)
+    except OSError as e:
+        if e.errno != errno.EEXIST:
+            raise

@@ -16,6 +16,10 @@ from torch.utils.tensorboard import SummaryWriter
 
 import random, tqdm, sys, math, gzip
 
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
+
 # NB, the enwik8 data contains tokens from 9 to 240, but well round up to the nearest
 # power of two.
 NUM_TOKENS = 256
@@ -57,6 +61,8 @@ def enwik8(path, n_train=int(90e6), n_valid=int(5e6), n_test=int(5e6)):
 
 def go(arg):
 
+    util.makedirs('./plots/')
+
     if arg.seed < 0:
         seed = random.randint(0, 1000000)
         print('random seed: ', seed)
@@ -81,6 +87,9 @@ def go(arg):
     opt = torch.optim.Adam(lr=arg.lr, params=model.parameters())
     # linear learning rate warmup
     sch = torch.optim.lr_scheduler.LambdaLR(opt, lambda i: min(i / (arg.lr_warmup / arg.batch_size), 1.0))
+
+    fig = plt.figure(figsize=(16, 16))
+    plt.subplot(111)
 
     # training loop
     # - note: we don't loop over the data, instead we sample a batch of random subsequences each time.
@@ -120,10 +129,16 @@ def go(arg):
         #   then we generate some random text to monitor progress
         if i != 0 and (i % arg.test_every == 0 or i == arg.num_batches - 1):
 
-            upto = data_test.size(0) if i == arg.num_batches - 1 else arg.test_subset
-            data_sub = data_test[:upto]
-
             with torch.no_grad():
+
+                plt.cla()
+                util.cosine_heatmap(model.pos_embedding(torch.arange(arg.context)), ax=plt.gca())
+                plt.savefig(f'./plots/cosine-heatmap.{i:06}.png')
+                print('.')
+
+                upto = data_test.size(0) if i == arg.num_batches - 1 else arg.test_subset
+                data_sub = data_test[:upto]
+
                 bits, tot = 0.0, 0
                 batch = [] # buffer, every time it fills up, we run it through the model
 
