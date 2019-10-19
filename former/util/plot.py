@@ -13,7 +13,6 @@ def cosine_heatmap(vectors, ax=plt.gca(), cm='inferno'):
     """
 
     num, dim = vectors.size()
-    print(num, dim)
 
     norms = vectors.norm(dim=1, keepdim=True)
 
@@ -21,11 +20,6 @@ def cosine_heatmap(vectors, ax=plt.gca(), cm='inferno'):
     div  = torch.mm(norms, norms.t())
 
     im = (dots/div).cpu().numpy()
-
-    print(im.min(), im.max())
-    print(im.shape)
-
-    print(im[10:, 10:])
 
     ax.imshow(im)
 
