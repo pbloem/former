@@ -11,7 +11,7 @@ class GTransformer(nn.Module):
     Transformer for generating text (character by character).
     """
 
-    def __init__(self, emb, heads, depth, seq_length, num_tokens, wide=False):
+    def __init__(self, emb, heads, depth, seq_length, num_tokens, attention_type='default'):
         super().__init__()
 
         self.num_tokens = num_tokens
@@ -21,7 +21,7 @@ class GTransformer(nn.Module):
         tblocks = []
         for i in range(depth):
             tblocks.append(
-                TransformerBlock(emb=emb, heads=heads, seq_length=seq_length, mask=True, wide=wide))
+                TransformerBlock(emb=emb, heads=heads, seq_length=seq_length, mask=True, attention_type=attention_type))
 
         self.tblocks = nn.Sequential(*tblocks)
 

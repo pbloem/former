@@ -7,7 +7,284 @@ import torch.nn.functional as F
 
 import random, math
 
+class SelfAttention(nn.Module):
+    """
+    Canonical implementation of multi-head self attention.
+    """
+
+    def __init__(self, emb, heads=8, mask=False):
+        """
+
+        :param emb:
+        :param heads:
+        :param mask:
+        """
+
+        super().__init__()
+
+        assert emb % heads == 0, f'Embedding dimension ({emb}) should be divisible by nr. of heads ({heads})'
+
+        self.emb = emb
+        self.heads = heads
+        self.mask = mask
+
+        s = emb // heads
+        # - We will break the embedding into `heads` chunks and feed each to a different attention head
+
+        self.tokeys    = nn.Linear(emb, emb, bias=False)
+        self.toqueries = nn.Linear(emb, emb, bias=False)
+        self.tovalues  = nn.Linear(emb, emb, bias=False)
+
+        self.unifyheads = nn.Linear(emb, emb)
+
+    def forward(self, x):
+
+        b, t, e = x.size()
+        h = self.heads
+        assert e == self.emb, f'Input embedding dim ({e}) should match layer embedding dim ({self.emb})'
+
+        s = e // h
+
+        keys    = self.tokeys(x)
+        queries = self.toqueries(x)
+        values  = self.tovalues(x)
+
+        keys    = keys.view(b, t, h, s)
+        queries = queries.view(b, t, h, s)
+        values  = values.view(b, t, h, s)
+
+        # -- We first compute the k/q/v's on the whole embedding vectors, and then split into the different heads.
+        #    See the following video for an explanation: https://youtu.be/KmAISyVvE1Y
+
+        # Compute scaled dot-product self-attention
+
+        # - fold heads into the batch dimension
+        keys = keys.transpose(1, 2).contiguous().view(b * h, t, s)
+        queries = queries.transpose(1, 2).contiguous().view(b * h, t, s)
+        values = values.transpose(1, 2).contiguous().view(b * h, t, s)
+
+        queries = queries / (e ** (1/4))
+        keys    = keys / (e ** (1/4))
+        # - Instead of dividing the dot products by sqrt(e), we scale the keys and values.
+        #   This should be more memory efficient
+
+        # - get dot product of queries and keys, and scale
+        dot = torch.bmm(queries, keys.transpose(1, 2))
+
+        assert dot.size() == (b*h, t, t)
+
+        if self.mask: # mask out the upper half of the dot matrix, excluding the diagonal
+            mask_(dot, maskval=float('-inf'), mask_diagonal=False)
+
+        dot = F.softmax(dot, dim=2)
+        # - dot now has row-wise self-attention probabilities
+
+        # apply the self attention to the values
+        out = torch.bmm(dot, values).view(b, h, t, s)
+
+        # swap h, t back, unify heads
+        out = out.transpose(1, 2).contiguous().view(b, t, s * h)
+
+        return self.unifyheads(out)
+
+class SelfAttentionNarrow(nn.Module):
+    """
+    A self attention with a reduced parameter space (experimental).
+
+    * Uses _the same_ key/query/value transformation on each head, but applied to a different slice of the embedding vector.
+    * Dispenses with the linear layer after merging the heads.
+
+    """
+
+    def __init__(self, emb, heads=8, mask=False):
+        """
+        :param emb:
+        :param heads:
+        :param mask:
+        """
+
+        super().__init__()
+
+        assert emb % heads == 0, f'Embedding dimension ({emb}) should be divisible by nr. of heads ({heads})'
+
+        self.emb = emb
+        self.heads = heads
+        self.mask = mask
+
+        s = emb // heads
+        # - We will break the embedding into `heads` chunks and feed each to a different attention head
+
+        self.tokeys    = nn.Linear(s, s, bias=False)
+        self.toqueries = nn.Linear(s, s, bias=False)
+        self.tovalues  = nn.Linear(s, s, bias=False)
+
+    def forward(self, x):
+
+        b, t, e = x.size()
+        h = self.heads
+        assert e == self.emb, f'Input embedding dim ({e}) should match layer embedding dim ({self.emb})'
+
+        s = e // h
+        x = x.view(b, t, h, s)
+
+        keys    = self.tokeys(x)
+        queries = self.toqueries(x)
+        values  = self.tovalues(x)
+
+        # -- We first compute the k/q/v's on the whole embedding vectors, and then split into the different heads.
+        #    See the following video for an explanation: https://youtu.be/KmAISyVvE1Y
+
+        # Compute scaled dot-product self-attention
+
+        # - fold heads into the batch dimension
+        keys = keys.transpose(1, 2).contiguous().view(b * h, t, s)
+        queries = queries.transpose(1, 2).contiguous().view(b * h, t, s)
+        values = values.transpose(1, 2).contiguous().view(b * h, t, s)
+
+        queries = queries / (e ** (1/4))
+        keys    = keys / (e ** (1/4))
+        # - Instead of dividing the dot products by sqrt(e), we scale the keys and values.
+        #   This should be more memory efficient
+
+        # - get dot product of queries and keys, and scale
+        dot = torch.bmm(queries, keys.transpose(1, 2))
+
+        assert dot.size() == (b*h, t, t)
+
+        if self.mask: # mask out the upper half of the dot matrix, excluding the diagonal
+            mask_(dot, maskval=float('-inf'), mask_diagonal=False)
+
+        dot = F.softmax(dot, dim=2)
+        # - dot now has row-wise self-attention probabilities
+
+        # apply the self attention to the values
+        out = torch.bmm(dot, values).view(b, h, t, s)
+
+        # swap h, t back, unify heads
+        out = out.transpose(1, 2).contiguous().view(b, t, h * s)
+
+        return out
+
+class Conv1D(nn.Module):
+    """
+    1D-convolutional layer as defined by Radford et al. for OpenAI GPT (and also used in GPT-2).
+
+    Basically works like a linear layer but the weights are transposed.
+
+    from:
+
+    Args:
+        nf (:obj:`int`): The number of output features.
+        nx (:obj:`int`): The number of input features.
+
+    NB: Note the illogical argument order.
+    """
+
+    def __init__(self, nf, nx):
+        super().__init__()
+
+        self.nf = nf
+
+        w = torch.empty(nx, nf)
+
+        nn.init.normal_(w, std=0.02)
+
+        self.weight = nn.Parameter(w)
+        self.bias = nn.Parameter(torch.zeros(nf))
+
+    def forward(self, x):
+
+        size_out = x.size()[:-1] + (self.nf,) # dimensions of the output tensor
+
+        x = x.view(-1, x.size(-1))
+        # -- The weights are applied to the last dimension, all others are collapsed into a single match dimension
+
+        x = torch.addmm(self.bias, x, self.weight)
+
+        x = x.view(*size_out) # restore the original dimensions
+
+        return x
+
+class SelfAttentionGPT2(nn.Module):
+    """
+    This is the self-attention operation exactly as implemented in the Huggingface port of GPT2. The code has been
+    simplified to remove several features not used here but otherwise it should do exactly the same as GPT2 when run with
+    normal parameters.
+
+    It is very similar to the default SelfAttention below, with the exception of the way it's initialized and some
+    small speed improvements in the custom implementation of the linear layer (the Conv1D defined above).
+
+    We include this primarily for comparison with our own canonical implementation to check for performance differences.
+    """
+    def __init__(self, emb, heads, mask=False):
+        super().__init__()
+
+        self.nheads = heads
+        self.emb = emb
+        self.mask = mask
+
+        self.c_attn = Conv1D(3 * emb, emb)
+        # -- (out_channels, in_channels):
+        #    This is a very slight modification of a linear layer
+
+        self.c_proj = Conv1D(emb, emb)
+
+    def _attn(self, q, k, v, mask=False):
+
+        w = torch.matmul(q, k) # raw attention weights
+
+        w = w / (float(v.size(-1)) ** 0.5) # scaled attention weights
+
+        if mask: # Apply the attention mask
+            mask_(w, maskval=float('-inf'), mask_diagonal=False)
+        # -- This is implemented differently in the Huggingface version, but the effect should be the same.
+
+        w = nn.Softmax(dim=-1)(w) # normalized attention weights
+
+        return torch.matmul(w, v)
+
+    def merge_heads(self, x):
+
+        x = x.permute(0, 2, 1, 3).contiguous()
+
+        new_x_shape = x.size()[:-2] + (x.size(-2) * x.size(-1),)
+
+        return x.view(*new_x_shape)
+
+    def split_heads(self, x, is_key=False):
+
+        new_x_shape = x.size()[:-1] + (self.nheads, x.size(-1) // self.nheads)
+
+        x = x.view(*new_x_shape)
+
+        if is_key:
+            return x.permute(0, 2, 3, 1)  # (batch, head, head_features, seq_length)
+        else:
+            return x.permute(0, 2, 1, 3)  # (batch, head, seq_length, head_features)
+
+    def forward(self, input_sequence):
+
+        b, t, e = input_sequence.size()
+
+        query, key, value = self.c_attn(input_sequence).split(e, dim=2)
+
+        query = self.split_heads(query)
+        key = self.split_heads(key, is_key=True)
+        value = self.split_heads(value)
+
+        a = self._attn(query, key, value)
+
+        a = self.merge_heads(a)
+        a = self.c_proj(a)
+
+        return a
+
 class SelfAttentionWide(nn.Module):
+    """
+    A self-attention with a larger number of parameters than the standard one. Uses a full-size embedding vector for
+    each head.
+    """
+
     def __init__(self, emb, heads=8, mask=False):
         """
 
@@ -69,88 +346,22 @@ class SelfAttentionWide(nn.Module):
 
         return self.unifyheads(out)
 
-class SelfAttentionNarrow(nn.Module):
-
-    def __init__(self, emb, heads=8, mask=False):
-        """
-
-        :param emb:
-        :param heads:
-        :param mask:
-        """
-
-        super().__init__()
-
-        assert emb % heads == 0, f'Embedding dimension ({emb}) should be divisible by nr. of heads ({heads})'
-
-        self.emb = emb
-        self.heads = heads
-        self.mask = mask
-
-        s = emb // heads
-        # - We will break the embedding into `heads` chunks and feed each to a different attention head
-
-        self.tokeys    = nn.Linear(s, s, bias=False)
-        self.toqueries = nn.Linear(s, s, bias=False)
-        self.tovalues  = nn.Linear(s, s, bias=False)
-
-        self.unifyheads = nn.Linear(heads * s, emb)
-
-    def forward(self, x):
-
-        b, t, e = x.size()
-        h = self.heads
-        assert e == self.emb, f'Input embedding dim ({e}) should match layer embedding dim ({self.emb})'
-
-        s = e // h
-        x = x.view(b, t, h, s)
-
-        keys    = self.tokeys(x)
-        queries = self.toqueries(x)
-        values  = self.tovalues(x)
-
-        assert keys.size() == (b, t, h, s)
-        assert queries.size() == (b, t, h, s)
-        assert values.size() == (b, t, h, s)
-
-        # Compute scaled dot-product self-attention
-
-        # - fold heads into the batch dimension
-        keys = keys.transpose(1, 2).contiguous().view(b * h, t, s)
-        queries = queries.transpose(1, 2).contiguous().view(b * h, t, s)
-        values = values.transpose(1, 2).contiguous().view(b * h, t, s)
-
-        queries = queries / (e ** (1/4))
-        keys    = keys / (e ** (1/4))
-        # - Instead of dividing the dot products by sqrt(e), we scale the keys and values.
-        #   This should be more memory efficient
-
-        # - get dot product of queries and keys, and scale
-        dot = torch.bmm(queries, keys.transpose(1, 2))
-
-        assert dot.size() == (b*h, t, t)
-
-        if self.mask: # mask out the upper half of the dot matrix, excluding the diagonal
-            mask_(dot, maskval=float('-inf'), mask_diagonal=False)
-
-        dot = F.softmax(dot, dim=2)
-        # - dot now has row-wise self-attention probabilities
-
-        # apply the self attention to the values
-        out = torch.bmm(dot, values).view(b, h, t, s)
-
-        # swap h, t back, unify heads
-        out = out.transpose(1, 2).contiguous().view(b, t, s * h)
-
-        return self.unifyheads(out)
-
 class TransformerBlock(nn.Module):
 
-    def __init__(self, emb, heads, mask, seq_length, ff_hidden_mult=4, dropout=0.0, wide=True):
+    def __init__(self, emb, heads, mask, seq_length, ff_hidden_mult=4, dropout=0.0, attention_type='default'):
         super().__init__()
 
-        self.attention = SelfAttentionWide(emb, heads=heads, mask=mask) if wide \
-                    else SelfAttentionNarrow(emb, heads=heads, mask=mask)
+        if attention_type == 'default':
+            self.attention = SelfAttention(emb, heads=heads, mask=mask)
+        elif attention_type == 'wide':
+            self.attention = SelfAttentionWide(emb, heads=heads, mask=mask)
+        elif attention_type == 'gpt2':
+            self.attention = SelfAttentionGPT2(emb, heads=heads, mask=mask)
+        elif attention_type == 'narrow':
+            self.attention = SelfAttentionNarrow(emb, heads=heads, mask=mask)
+        else:
+            raise Exception(f'Self-attention type {type} not recognized.')
+
         self.mask = mask
 
         self.norm1 = nn.LayerNorm(emb)

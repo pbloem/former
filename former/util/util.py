@@ -1,4 +1,4 @@
-import torch, os
+import torch, os, time
 
 def mask_(matrices, maskval=0.0, mask_diagonal=True):
     """
@@ -38,3 +38,16 @@ def here(subpath=None):
 
 def contains_nan(tensor):
     return bool((tensor != tensor).sum() > 0)
+
+
+tics = []
+
+
+def tic():
+    tics.append(time.time())
+
+def toc():
+    if len(tics)==0:
+        return None
+    else:
+        return time.time()-tics.pop()

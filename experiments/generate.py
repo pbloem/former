@@ -1,7 +1,7 @@
 from _context import former
 from former import util, GTransformer
 
-from util import d, here
+from util import d, here, tic, toc
 
 import torch
 from torch import nn
@@ -55,6 +55,139 @@ def enwik8(path, n_train=int(90e6), n_valid=int(5e6), n_test=int(5e6)):
         trX, vaX, teX = np.split(X, [n_train, n_train + n_valid])
         return torch.from_numpy(trX), torch.from_numpy(vaX), torch.from_numpy(teX)
 
+def sample_batch(data, length, batch_size):
+    """
+    Takes the data (a single sequence of tokens) and slices out a batch of subsequences to provide as input to the model.
+
+    For each input instance, it also slices out the sequence that is shofted one position to the right, to provide as a
+    target for the model.
+
+    :param data: The (training) data. A single vector of tokens represented by integers
+    :param length: The length of the subsequences in the batch.
+    :param batch_size: The number of subsequences in the batch
+    :return: A pair (input, target) of minteger matrices representing the input and target for the model.
+    """
+
+    # Sample the starting indices of the sequences to slice out.
+    starts = torch.randint(size=(batch_size,), low=0, high=data.size(0) - length - 1)
+
+    # Slice out the input sequences
+    seqs_inputs  = [data[start:start + length] for start in starts]
+    # -- the start index is the one we just sampled, and the end is exactly 'lentgh' positions after that.
+    seqs_target = [data[start + 1:start + length + 1] for start in starts]
+    # -- The target is the same sequence as input, except one character ahead (we are asking the model to predict the
+    #    next character at each position)
+
+    # We now have two lists of torch vectors, which we can concatenate into matrices of batch_size-by-length
+    inputs = torch.cat([s[None, :] for s in seqs_inputs], dim=0).to(torch.long)
+    target = torch.cat([s[None, :] for s in seqs_target], dim=0).to(torch.long)
+    # -- Note that we add a singleton dimenson to each vector, s[None.,:], and then concatenate along that dimension.
+
+    return inputs, target
+
+def compute_compression(model, data, context, batch_size):
+    """
+    Compute the _compression_ of a dataset under a model. That is, given a model, in how many bits could we represent
+    the dataset. This requires us to turn a given probability distribution into a code for the outcomes.
+
+    See [this video](https://youtu.be/mSneVjDvzNQ) for an explanation.
+
+    :param model: A sequence-to-sequence model that takes as input a (sub) sequence of integers and produces a probability
+    distributuion on the output.
+    :param data: A singe list of integers representing the  data
+    :return: The result of the computation in "bits per byte". That is, how many bits does the compressed representation
+    spend on each byte (=ASCII character) of the raw data.
+    """
+
+    bits, tot = 0.0, 0
+    batch = []
+    # Buffer, every time it fills up, we run it through the model
+    # --- For the sake of speed we want to process the data in batches. For each token in the data, we make a
+    #     prediction based on all the `context` tokens before it. This means that for each subsequence in the batch, we
+    #     need to shift the start/end indices ahead by one token.
+    #
+    #     After we pass the batch through the model, we look at only the probabilities predicted for the last token.
+
+    for current in range(data.size(0)):
+
+        fr = max(0, current - context)
+        to = current + 1
+
+        instance = data[fr:to].to(torch.long) # the subsequence of the data to add to the batch
+        if instance.size(0) < context + 1:
+            pad = torch.zeros(size=(context + 1 - instance.size(0),), dtype=torch.long)
+            instance = torch.cat([pad, instance], dim=0)
+            # -- the first tokens don't have enough tokens preceding them, so we pad them to the right size.
+
+            assert instance.size(0) == context + 1 # all instances should be `context` + 1 long
+
+        if torch.cuda.is_available():
+            instance = instance.cuda()
+
+        batch.append(instance[None, :])
+        # -- We add a singleton dimension to concatenate along later.
+
+        if len(batch) == batch_size or current == data.size(0) - 1:
+            # batch is full or we are at the last instance, run it through the model
+
+            b = len(batch)
+
+            all = torch.cat(batch, dim=0)
+            inputs = all[:, :-1]  # input
+            target = all[:, -1]  # target values
+
+            output = model(inputs)
+
+            lnprobs = output[torch.arange(b, device=d()), -1, target]
+            log2probs = lnprobs * LOG2E
+            # -- The model produces natural logarithms of probabilities, but we need base-2 logarithms of the
+            #    probabilities, since these give us bits.
+
+            bits += - log2probs.sum() # Add the bits for each character (the negative log_2 probabilties) to the running total
+            batch = []  # clear the buffer
+
+    return bits / data.size(0) # bits-per-byte
+
+def sample_sequence(model, seed, max_context, length=600, temperature=0.5, verbose=False):
+    """
+    Sequentially samples a sequence from the model, token by token.
+
+    :param model:
+    :param seed: The sequence to start with.
+    :param length: The total number of characters to sample.
+    :param temperature: The sampling temperature.
+    :param verbose: If true, the sampled sequence is also printed as it is sampled.
+
+    :return: The sampled sequence, including the seed.
+    """
+
+    sequence = seed.detach().clone()
+
+    if verbose: # Print the seed, surrounded by square brackets
+        print('[', end='', flush=True)
+        for c in seed:
+            print(str(chr(c)), end='', flush=True)
+        print(']', end='', flush=True)
+
+    for _ in range(length):
+
+        # Input is the tail end of the sampled sequence (as many tokens as the model can handle)
+        input = sequence[-max_context:]
+
+        # Run the current input through the model
+        output = model(input[None, :])
+
+        # Sample the next token from the probabilitys at the last position of the output.
+        c = sample(output[0, -1, :], temperature)
+
+        if verbose:
+            print(str(chr(max(32, c))), end='', flush=True)
+
+        sequence = torch.cat([sequence, c[None]], dim=0) # Append the sampled token to the sequence
+
+    print()
+    return seed
+
 def go(arg):
 
     if arg.seed < 0:
@@ -73,124 +206,81 @@ def go(arg):
                             if arg.final else (data_train, data_val)
 
     # create the model
-    model = GTransformer(emb=arg.embedding_size, heads=arg.num_heads, depth=arg.depth, seq_length=arg.context, num_tokens=NUM_TOKENS, wide=arg.wide)
+    model = GTransformer(emb=arg.embedding_size, heads=arg.num_heads, depth=arg.depth, seq_length=arg.context, num_tokens=NUM_TOKENS, attention_type=arg.attention_type)
     if torch.cuda.is_available():
         model.cuda()
 
-
     opt = torch.optim.Adam(lr=arg.lr, params=model.parameters())
-    # linear learning rate warmup
+
+    # Linear learning rate warmup
     sch = torch.optim.lr_scheduler.LambdaLR(opt, lambda i: min(i / (arg.lr_warmup / arg.batch_size), 1.0))
 
-    # training loop
-    # - note: we don't loop over the data, instead we sample a batch of random subsequences each time.
+    # Training loop
+    # -- We don't loop over the data, instead we sample a batch of random subsequences each time. This is not strictly
+    #    better or worse as a training method, it's just a little simpler.
+    #
+    instances_seen = 0
     for i in tqdm.trange(arg.num_batches):
 
         opt.zero_grad()
 
-        # sample a batch of random subsequences
-        starts = torch.randint(size=(arg.batch_size, ), low=0, high=data_train.size(0) - arg.context - 1)
-        seqs_source = [data_train[start  :start+arg.context  ] for start in starts]
-        seqs_target = [data_train[start+1:start+arg.context+1] for start in starts]
-        source = torch.cat([s[None, :] for s in seqs_source ], dim=0).to(torch.long)
-        target = torch.cat([s[None, :] for s in seqs_target ], dim=0).to(torch.long)
-        # - target is the same sequence as source, except one character ahead
+        source, target = sample_batch(data_train, length=arg.context, batch_size=arg.batch_size)
+        instances_seen += source.size(0)
 
         if torch.cuda.is_available():
             source, target = source.cuda(), target.cuda()
-        source, target = Variable(source), Variable(target)
 
-        output = model(source)
+        tic()
+        output = model(source) # forward pass
+        t = toc()
 
+        # Compute the loss
         loss = F.nll_loss(output.transpose(2, 1), target, reduction='mean')
-        tbw.add_scalar('transformer/train-loss', float(loss.item()) * LOG2E, i * arg.batch_size)
 
-        loss.backward()
+        tbw.add_scalar('transformer/train-loss', float(loss.item()) * LOG2E, i * arg.batch_size, instances_seen)
+        tbw.add_scalar('transformer/time-forward', t, instances_seen)
+
+        loss.backward() # backward pass
 
         # clip gradients
-        # - If the total gradient vector has a length > 1, we clip it back down to 1.
+        # -- If the total gradient vector has a length > x, we clip it back down to x.
         if arg.gradient_clipping > 0.0:
             nn.utils.clip_grad_norm_(model.parameters(), arg.gradient_clipping)
 
-        opt.step()
-        sch.step()
+        opt.step() # stochastic gradient descent step
+        sch.step() # update the learning rate
 
-        # - validate every {arg.test_every} steps. First we compute the
-        #   compression on the validation (or a subset)
-        #   then we generate some random text to monitor progress
+        # Validate every `arg.test_every` steps. First we compute the
+        # compression on the validation data (or a subset),
+        # then we generate some random text to monitor progress.
         if i != 0 and (i % arg.test_every == 0 or i == arg.num_batches - 1):
-
-            upto = data_test.size(0) if i == arg.num_batches - 1 else arg.test_subset
-            data_sub = data_test[:upto]
-
             with torch.no_grad():
-                bits, tot = 0.0, 0
-                batch = [] # buffer, every time it fills up, we run it through the model
 
-                for current in range(data_sub.size(0)):
+                ## Sample and print a random sequence
 
-                    fr = max(0, current - arg.context)
-                    to = current + 1
-
-                    context = data_sub[fr:to].to(torch.long)
-                    if context.size(0) < arg.context + 1:
-                        pad = torch.zeros(size=(arg.context + 1 - context.size(0),), dtype=torch.long)
-                        context = torch.cat([pad, context], dim=0)
-
-                        assert context.size(0) == arg.context + 1
-
-                    if torch.cuda.is_available():
-                        context = context.cuda()
-
-                    batch.append(context[None, :])
-
-                    if len(batch) == arg.test_batchsize or current == data_sub.size(0) - 1:
-
-                        # batch is full, run it through the model
-                        b = len(batch)
-
-                        all = torch.cat(batch, dim=0)
-                        source = all[:, :-1] # input
-                        target = all[:, -1]  # target values
-
-                        output = model(source)
-
-                        lnprobs = output[torch.arange(b, device=d()), -1, target]
-                        log2probs = lnprobs * LOG2E # convert from nats to bits
-
-                        bits += - log2probs.sum()
-                        batch = [] # empty buffer
-
-                bits_per_byte = bits / data_sub.size(0)
-
-                # print validation performance. 1 bit per byte is (currently) state of the art.
-                print(f'epoch{i}: {bits_per_byte:.4} bits per byte')
-                tbw.add_scalar(f'transformer/eval-loss', bits_per_byte, i * arg.batch_size)
-
-                # generate some random text
-                GENSIZE = 600
-                TEMP = 0.5
+                # Slice a random seed from the test data, and sample a continuation from the model.
                 seedfr = random.randint(0, data_test.size(0) - arg.context)
-                input = data_test[seedfr:seedfr + arg.context].to(torch.long)
+                seed = data_test[seedfr:seedfr + arg.context].to(torch.long)
 
                 if torch.cuda.is_available():
-                    input = input.cuda()
+                    seed = seed.cuda()
 
-                input = Variable(input)
+                sample_sequence(model, seed=seed, max_context=arg.context, verbose=True, length=arg.sample_length)
 
-                print('[', end='', flush=True)
-                for c in input:
-                    print(str(chr(c)), end='', flush=True)
-                print(']', end='', flush=True)
+                ## Compute validation bits per byte
 
-                for _ in range(GENSIZE):
-                    output = model(input[None, :])
-                    c = sample(output[0, -1, :], TEMP)
-                    print(str(chr(max(32, c))), end='', flush=True)
+                upto = data_test.size(0) if i == arg.num_batches - 1 else arg.test_subset
+                data_sub = data_test[:upto]
 
-                    input = torch.cat([input[1:], c[None]], dim=0)
+                bits_per_byte = compute_compression(model, data_sub, context=arg.context, batch_size=arg.test_batchsize)
+                # -- Since we're not computing gradients, we can increase the batch size a little from what we used in
+                #    training.
 
-                print()
+                print(f'epoch{i}: {bits_per_byte:.4} bits per byte')
+                tbw.add_scalar(f'transformer/eval-loss', bits_per_byte, i * arg.batch_size, instances_seen)
+                # -- 0.9 bit per byte is around the state of the art.
+
+
 
 if __name__ == "__main__":
 
@@ -216,7 +306,7 @@ if __name__ == "__main__":
                         help="Learning rate",
                         default=0.0001, type=float)
 
-    parser.add_argument("-T", "--tb_dir", dest="tb_dir",
+    parser.add_argument("-T", "--tb-dir", dest="tb_dir",
                         help="Tensorboard logging directory",
                         default='./runs')
 
@@ -237,7 +327,7 @@ if __name__ == "__main__":
                         default=256, type=int)
 
     parser.add_argument("-d", "--depth", dest="depth",
-                        help="Depth of the network (nr of self-attention layers)",
+                        help="Depth of the network (nr. of transformer blocks)",
                         default=12, type=int)
 
     parser.add_argument("-r", "--random-seed",
@@ -270,9 +360,14 @@ if __name__ == "__main__":
                         help="Learning rate warmup.",
                         default=5000, type=int)
 
-    parser.add_argument("--wide", dest="wide",
-                        help="Use wide self attention instead of narrow self attention.",
-                        action="store_true")
+    parser.add_argument("--sample-length",
+                        dest="sample_length",
+                        help="Number of character to sample.",
+                        default=600, type=int)
+
+    parser.add_argument("--attention-type", dest="attention_type",
+                        help="Which type of self-attention to use (default, gpt2, wide, narrow)",
+                        default="default", type=str)
 
     options = parser.parse_args()
 
