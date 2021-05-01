@@ -180,17 +180,29 @@ class Conv1D(nn.Module):
     NB: Note the illogical argument order.
     """
 
-    def __init__(self, nf, nx):
+    def __init__(self, nf, nx, glorot=True):
         super().__init__()
 
         self.nf = nf
 
         w = torch.empty(nx, nf)
+        b = torch.zeros(nf)
 
-        nn.init.normal_(w, std=0.02)
+        if not glorot:
+            nn.init.normal_(w, std=0.02) # default initialization, seems to be optimized for specific size
+        else:
+            # Default initialization for nn.Linear
+            nn.init.kaiming_uniform_(w, a=math.sqrt(5))
+            # -- This assumes a leaky relu activation which isn't what's used downstream, but it's what's used in the other
+            #    SA implementations
+
+            if self.bias is not None:
+                fan_in, _ = nn.init._calculate_fan_in_and_fan_out(w)
+                bound = 1 / math.sqrt(fan_in)
+                nn.init.uniform_(self.bias, -bound, bound)
 
         self.weight = nn.Parameter(w)
-        self.bias = nn.Parameter(torch.zeros(nf))
+        self.bias = nn.Parameter(b)
 
     def forward(self, x):
 
@@ -207,7 +219,7 @@ class Conv1D(nn.Module):
 
 class SelfAttentionGPT2(nn.Module):
     """
-    This is the self-attention operation exactly as implemented in the Huggingface port of GPT2. The code has been
+    This is the self-attention operation as implemented in the Huggingface port of GPT2. The code has been
     simplified to remove several features not used here but otherwise it should do exactly the same as GPT2 when run with
     normal parameters.
 
@@ -231,17 +243,17 @@ class SelfAttentionGPT2(nn.Module):
 
     def _attn(self, q, k, v, mask=False):
 
-        w = torch.matmul(q, k) # raw attention weights
+        dot = torch.matmul(q, k) # raw attention weights
 
-        w = w / (float(v.size(-1)) ** 0.5) # scaled attention weights
+        dot = dot / (float(v.size(-1)) ** 0.5) # scaled attention weights
 
         if mask: # Apply the attention mask
-            mask_(w, maskval=float('-inf'), mask_diagonal=False)
+            mask_(dot, maskval=float('-inf'), mask_diagonal=False)
         # -- This is implemented differently in the Huggingface version, but the effect should be the same.
 
-        w = nn.Softmax(dim=-1)(w) # normalized attention weights
+        dot = nn.Softmax(dim=-1)(dot) # normalized attention weights
 
-        return torch.matmul(w, v)
+        return torch.matmul(dot, v) # attention over values
 
     def merge_heads(self, x):
 
@@ -281,8 +293,9 @@ class SelfAttentionGPT2(nn.Module):
 
 class SelfAttentionWide(nn.Module):
     """
-    A self-attention with a larger number of parameters than the standard one. Uses a full-size embedding vector for
-    each head.
+    A self-attention with a larger number of parameters than the standard one.
+
+    Uses a full-size embedding vector for each head.
     """
 
     def __init__(self, emb, heads=8, mask=False):
