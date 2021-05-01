@@ -196,10 +196,9 @@ class Conv1D(nn.Module):
             # -- This assumes a leaky relu activation which isn't what's used downstream, but it's what's used in the other
             #    SA implementations
 
-            if self.bias is not None:
-                fan_in, _ = nn.init._calculate_fan_in_and_fan_out(w)
-                bound = 1 / math.sqrt(fan_in)
-                nn.init.uniform_(self.bias, -bound, bound)
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(w)
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(b, -bound, bound)
 
         self.weight = nn.Parameter(w)
         self.bias = nn.Parameter(b)
