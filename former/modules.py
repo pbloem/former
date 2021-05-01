@@ -1,5 +1,5 @@
 from former import util
-from util import mask_
+from former.util import mask_
 
 import torch
 from torch import nn
@@ -180,7 +180,7 @@ class Conv1D(nn.Module):
     NB: Note the illogical argument order.
     """
 
-    def __init__(self, nf, nx, glorot=True):
+    def __init__(self, nf, nx, he=True):
         super().__init__()
 
         self.nf = nf
@@ -188,7 +188,7 @@ class Conv1D(nn.Module):
         w = torch.empty(nx, nf)
         b = torch.zeros(nf)
 
-        if not glorot:
+        if not he:
             nn.init.normal_(w, std=0.02) # default initialization, seems to be optimized for specific size
         else:
             # Default initialization for nn.Linear
@@ -234,11 +234,14 @@ class SelfAttentionGPT2(nn.Module):
         self.emb = emb
         self.mask = mask
 
-        self.c_attn = Conv1D(3 * emb, emb)
+        #self.c_attn = Conv1D(3 * emb, emb)
         # -- (out_channels, in_channels):
         #    This is a very slight modification of a linear layer
 
-        self.c_proj = Conv1D(emb, emb)
+        self.c_attn = nn.Linear(emb, 3*emb)
+
+        #self.c_proj = Conv1D(emb, emb)
+        self.c_proj = nn.Linear(emb, emb)
 
     def _attn(self, q, k, v, mask=False):
 
