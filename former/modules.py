@@ -5,7 +5,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-import random, math
+import random, math, sys
 
 class SelfAttention(nn.Module):
     """
@@ -243,13 +243,13 @@ class SelfAttentionGPT2(nn.Module):
         #self.c_proj = Conv1D(emb, emb)
         self.c_proj = nn.Linear(emb, emb)
 
-    def _attn(self, q, k, v, mask=False):
+    def _attn(self, q, k, v):
 
         dot = torch.matmul(q, k) # raw attention weights
 
         dot = dot / (float(v.size(-1)) ** 0.5) # scaled attention weights
 
-        if mask: # Apply the attention mask
+        if self.mask: # Apply the attention mask
             mask_(dot, maskval=float('-inf'), mask_diagonal=False)
         # -- This is implemented differently in the Huggingface version, but the effect should be the same.
 

@@ -10,7 +10,6 @@ setup(name='former',
       packages=['former'],
       install_requires=[
             'torch',
-            'tb-nightly',
             'tqdm',
             'numpy',
             'torchtext'
