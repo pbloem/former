@@ -361,9 +361,123 @@ class SelfAttentionWide(nn.Module):
 
         return self.unifyheads(out)
 
+
+class SelfAttentionRelative(nn.Module):
+    """
+    Implementation of self-attention with relative position embeddings.
+
+    Inspired by the Transformer-XL relative positions. Not guaranteed to be exactly the same. See
+      https://youtu.be/oUhGZMCTHtI
+    for an explanation.
+
+    """
+
+    def __init__(self, emb, pos_embedding, heads=8, mask=False, ):
+        """
+
+        :param emb:
+        :param heads:
+        :param mask:
+        """
+
+        super().__init__()
+
+        assert emb % heads == 0, f'Embedding dimension ({emb}) should be divisible by nr. of heads ({heads})'
+
+        self.emb = emb
+        self.heads = heads
+        self.mask = mask
+
+        self.pos = pos_embedding # embedding layer
+
+        e, s, h = emb, emb // heads, heads
+        # - We will break the embedding into `heads` chunks and feed each to a different attention head
+
+        self.tokeys    = nn.Linear(emb, emb, bias=False)
+        self.tokeys_pos    = nn.Linear(emb, emb, bias=False)
+        self.toqueries = nn.Linear(emb, emb, bias=False)
+        self.tovalues  = nn.Linear(emb, emb, bias=False)
+
+        self.unifyheads = nn.Linear(emb, emb)
+
+        self.parma, self.parmb = nn.Parameter(torch.randn(1, h, 1, s)), nn.Parameter(torch.randn(1, h, 1, s))
+
+    def forward(self, x):
+
+
+        b, t, e = x.size()
+        h = self.heads
+        assert e == self.emb, f'Input embedding dim ({e}) should match layer embedding dim ({self.emb})'
+
+        s = e // h
+
+        keys     = self.tokeys(x)
+        queries  = self.toqueries(x)
+        values   = self.tovalues(x)
+
+        positions = self.pos(torch.arange(2*t-1))[None, :].expand(b, 2*t-1, e)
+        keys_pos = self.tokeys_pos(positions)
+
+        assert keys_pos.size() == (b, 2*t-1, e)
+
+        keys     = keys.view(b, t, h, s)
+        keys_pos = keys_pos.view(b, 2*t-1, h, s)
+        queries  = queries.view(b, t, h, s)
+        values   = values.view(b, t, h, s)
+
+        # -- We first compute the k/q/v's on the whole embedding vectors, and then split into the different heads.
+        #    See the following video for an explanation: https://youtu.be/KmAISyVvE1Y
+
+        # Compute scaled dot-product self-attention
+
+        # - fold heads into the batch dimension
+        keys = keys.transpose(1, 2).contiguous().view(b * h, t, s)
+        keys_pos = keys_pos.transpose(1, 2).contiguous().view(b * h, 2*t-1, s)
+        queries = queries.transpose(1, 2).contiguous().view(b * h, t, s)
+        values = values.transpose(1, 2).contiguous().view(b * h, t, s)
+
+        # expand a and b in batch dimension, and fold in heads
+        parma = self.parma.expand(b, h, t, s).contiguous().view(b*h, t, s)
+        parmb = self.parmb.expand(b, h, t, s).contiguous().view(b*h, t, s)
+
+        # The matrix of raw attention weights (`dot`) is the sum of four different matrix products
+
+        dot_tt = torch.einsum('bis, bjs -> bij',  queries, keys)     # -- basic self attention: token with token
+        assert dot_tt.size()== (b*h, t, t), f'{dot_tt.size()}'
+
+        dot_tp = torch.einsum('bis, bjs -> bij', queries, keys_pos) # -- token with position
+        dot_tp = util.slice_diag(dot_tp, l=t)
+        assert dot_tp.size() == (b*h, t, t), f'{dot_tp.size()}'
+
+        dot_pt = torch.einsum('bis, bjs -> bij', parma, keys)  # -- position with token
+        assert dot_pt.size() == (b*h, t, t), f'{dot_pt.size()}'
+
+        dot_pp =  torch.einsum('bis, bjs -> bij', parmb, keys_pos)  # -- pos with pos
+        dot_pp = util.slice_diag(dot_pp, l=t)
+        assert dot_pp.size() == (b*h, t, t), f'{dot_pp.size()}'
+
+        dot = dot_tt + dot_tp + dot_pt + dot_pp
+
+        assert dot.size() == (b*h, t, t)
+
+        if self.mask: # mask out the upper half of the dot matrix, excluding the diagonal
+            mask_(dot, maskval=float('-inf'), mask_diagonal=False)
+
+        dot = F.softmax(dot, dim=2)
+        # - dot now has row-wise self-attention probabilities
+
+        # apply the self attention to the values
+        out = torch.bmm(dot, values).view(b, h, t, s)
+
+        # swap h, t back, unify heads
+        out = out.transpose(1, 2).contiguous().view(b, t, s * h)
+
+        return self.unifyheads(out)
+
+
 class TransformerBlock(nn.Module):
 
-    def __init__(self, emb, heads, mask, seq_length, ff_hidden_mult=4, dropout=0.0, attention_type='default'):
+    def __init__(self, emb, heads, mask, seq_length, ff_hidden_mult=4, dropout=0.0, attention_type='default', pos_embedding=None):
         super().__init__()
 
         if attention_type == 'default':
@@ -374,6 +488,9 @@ class TransformerBlock(nn.Module):
             self.attention = SelfAttentionGPT2(emb, heads=heads, mask=mask)
         elif attention_type == 'narrow':
             self.attention = SelfAttentionNarrow(emb, heads=heads, mask=mask)
+        elif attention_type == 'relative':
+            assert pos_embedding is not None
+            self.attention = SelfAttentionRelative(emb, heads=heads, mask=mask, pos_embedding=pos_embedding)
         else:
             raise Exception(f'Self-attention type {type} not recognized.')
 

@@ -16,12 +16,13 @@ class GTransformer(nn.Module):
 
         self.num_tokens = num_tokens
         self.token_embedding = nn.Embedding(embedding_dim=emb, num_embeddings=num_tokens)
-        self.pos_embedding = nn.Embedding(embedding_dim=emb, num_embeddings=seq_length)
+        self.pos_embedding = nn.Embedding(embedding_dim=emb, num_embeddings=(seq_length*2-1 if attention_type=='relative' else seq_length))
+
 
         tblocks = []
         for i in range(depth):
             tblocks.append(
-                TransformerBlock(emb=emb, heads=heads, seq_length=seq_length, mask=True, attention_type=attention_type))
+                TransformerBlock(emb=emb, heads=heads, seq_length=seq_length, mask=True, attention_type=attention_type, pos_embedding=self.pos_embedding))
 
         self.tblocks = nn.Sequential(*tblocks)
 

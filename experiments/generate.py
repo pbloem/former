@@ -289,7 +289,8 @@ if __name__ == "__main__":
 
     parser.add_argument("-N", "--num-batches",
                         dest="num_batches",
-                        help="Number of batches to train on. Each batch contains randomly sampled subsequences of the data.",
+                        help="Number of batches to train on. Each batch contains randomly sampled subsequences of the data."
+                             "Default is set to a very large value so you can keep running until the output looks good. ",
                         default=1_000_000, type=int)
 
     parser.add_argument("-b", "--batch-size",
@@ -366,7 +367,7 @@ if __name__ == "__main__":
                         default=600, type=int)
 
     parser.add_argument("--attention-type", dest="attention_type",
-                        help="Which type of self-attention to use (default, gpt2, wide, narrow)",
+                        help="Which type of self-attention to use (default, gpt2, wide, narrow, relative)",
                         default="default", type=str)
 
     options = parser.parse_args()

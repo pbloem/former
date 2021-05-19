@@ -1,4 +1,4 @@
-from .modules import SelfAttentionWide, SelfAttentionWide, TransformerBlock
+from .modules import SelfAttention, SelfAttentionWide, TransformerBlock
 
 from .transformers import GTransformer, CTransformer
 

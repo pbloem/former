@@ -51,3 +51,31 @@ def toc():
         return None
     else:
         return time.time()-tics.pop()
+
+def slice_diag(matrix, l, dv=None):
+    """
+    Take a batch of attention matrices for relative position encodings and slice out the relevant attentions. These
+    are the length l sequences starting at the diagonal
+
+    :param matrix:
+    :return:
+    """
+    if dv is None:
+        dv = d(matrix)
+
+    h, w = matrix.size(-2), matrix.size(-1)
+    assert w == 2 * l -1, f'{(h, w)=} {l=}'
+    rest = matrix.size()[:-2]
+
+    matrix = matrix.view(-1, h, w)
+    b, h, w = matrix.size()
+
+    result = matrix.view(b, -1)
+    result = torch.cat([result, torch.zeros(b, l, device=dv)], dim=1)
+    assert result.size() == (b, 2 * l * l), f'{result.size()=}'
+
+    result = result.view(b, l, 2*l)
+    result = result[:, :, :l]
+
+    result = result.view(*rest, h, l)
+    return result

@@ -1,1 +1,1 @@
-from .util import mask_, d, here, contains_nan, tic, toc
+from .util import mask_, d, here, contains_nan, tic, toc, slice_diag
