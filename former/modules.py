@@ -1,5 +1,5 @@
 from former import util
-from former.util import mask_
+from former.util import mask_, d
 
 import torch
 from torch import nn
@@ -415,7 +415,7 @@ class SelfAttentionRelative(nn.Module):
         queries  = self.toqueries(x)
         values   = self.tovalues(x)
 
-        positions = self.pos(torch.arange(2*t-1))[None, :].expand(b, 2*t-1, e)
+        positions = self.pos(torch.arange(2*t-1, device=d(x)))[None, :].expand(b, 2*t-1, e)
         keys_pos = self.tokeys_pos(positions)
 
         assert keys_pos.size() == (b, 2*t-1, e)
