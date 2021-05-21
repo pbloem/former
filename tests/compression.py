@@ -20,11 +20,10 @@ def test_gpt2(batch_size=16, subset=None, name='distilgpt2'):
     with gzip.open(util.here() + '/data/enwik8.gz') as file:
         text = str(file.read())
 
-    numchars = len(text)
-    print(f'Loaded enwik8. {type(text)=}, {numchars} characters in total. Chunk: "{text[150_000:150_100]}"')
-
     if subset is not None:
         text = text[:subset]
+
+    numchars = len(text)
 
     encoded_input = tokenizer(text, return_tensors='pt')['input_ids'][0]
 
