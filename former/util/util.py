@@ -148,11 +148,11 @@ def compute_compression(model, data, context, batch_size, verbose=False):
                 output = model(inputs)
 
             if type(output) != torch.Tensor:
-                output = output.logits # To make the method work for GPT2 models from Huggingface
+                output = torch.log_softmax(output.logits, dim=2) # To make the method work for GPT2 models from Huggingface
 
             assert output.size()[:2] == (b, context), f'was: {output.size()}, should be {(b, context, -1)}'
 
-            lnprobs = output[torch.arange(b, device=d()), torch.tensor(target_indices), target]
+            lnprobs = output[torch.arange(b, device=d()), target_indices, target]
             log2probs = lnprobs * LOG2E
             # -- The model produces natural logarithms of probabilities, but we need base-2 logarithms of the
             #    probabilities, since these give us bits.
