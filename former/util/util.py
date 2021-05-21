@@ -1,4 +1,4 @@
-import torch, os, time
+import torch, os, time, math, tqdm
 
 def mask_(matrices, maskval=0.0, mask_diagonal=True):
     """
@@ -79,3 +79,87 @@ def slice_diag(matrix, l, dv=None):
 
     result = result.view(*rest, h, l)
     return result
+
+# Used for converting between nats and bits
+LOG2E = math.log2(math.e)
+
+def compute_compression(model, data, context, batch_size, verbose=False):
+    """
+    Compute the _compression_ of a dataset under a model. That is, given a model, in how many bits could we represent
+    the dataset. This requires us to turn a given probability distribution into a code for the outcomes.
+
+    See [this video](https://youtu.be/mSneVjDvzNQ) for an explanation.
+
+    :param model: A sequence-to-sequence model that takes as input a (sub) sequence of integers and produces a probability
+    distributuion on the output.
+    :param data: A singe list of integers representing the  data
+    :return: The result of the computation in "bits per byte". That is, how many bits does the compressed representation
+    spend on each byte (=ASCII character) of the raw data.
+    """
+
+    bits, tot = 0.0, 0
+    batch = []
+    # Buffer, every time it fills up, we run it through the model
+    # --- For the sake of speed we want to process the data in batches. For each token in the data, we make a
+    #     prediction based on all the `context` tokens before it. This means that for each subsequence in the batch, we
+    #     need to shift the start/end indices ahead by one token.
+    #
+    #     After we pass the batch through the model, we look at only the probabilities predicted for the last token.
+    target_indices = []
+    for current in tqdm.trange(data.size(0)) if verbose else range(data.size(0)):
+
+        fr = max(0, current - context)
+        to = current + 1
+
+        instance = data[fr:to].to(torch.long) # the subsequence of the data to add to the batch
+
+        target_indices.append(instance.size(0) - 1)
+
+        if instance.size(0) < context:
+            print(instance.size())
+
+            # the index in the output tensor of the character we want to predict
+
+            pad = torch.zeros(size=(context + 1 - instance.size(0),), dtype=torch.long)
+            instance = torch.cat([instance, pad], dim=0)
+            # -- the first tokens don't have enough tokens preceding them, so we pad them to the right size.
+
+
+            assert instance.size(0) == context + 1 # all instances should be `context` + 1 long
+
+        if torch.cuda.is_available():
+            instance = instance.cuda()
+
+        batch.append(instance[None, :])
+        # -- We add a singleton dimension to concatenate along later.
+
+        if len(batch) == batch_size or current == data.size(0) - 1:
+            # batch is full or we are at the last instance, run it through the model
+
+            print(target_indices)
+
+            b = len(batch)
+
+            all = torch.cat(batch, dim=0)
+            inputs = all[:, :-1]  # input
+            target = all[:, -1]  # target values
+
+            with torch.no_grad():
+                if next(model.parameters()).is_cuda:
+                    input = input.cuda()
+                output = model(inputs)
+
+            if type(output) != torch.Tensor:
+                output = output.logits # To make the method work for GPT2 models from Huggingface
+
+            assert output.size()[:2] == (b, context), f'was: {output.size()}, should be {(b, context, -1)}'
+
+            lnprobs = output[torch.arange(b, device=d()), torch.tensor(target_indices), target]
+            log2probs = lnprobs * LOG2E
+            # -- The model produces natural logarithms of probabilities, but we need base-2 logarithms of the
+            #    probabilities, since these give us bits.
+
+            bits += - log2probs.sum() # Add the bits for each character (the negative log_2 probabilties) to the running total
+            batch, target_indices = [], []  # clear the buffer
+
+    return bits.item() # total nr of bits used

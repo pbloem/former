@@ -19,8 +19,6 @@ import random, tqdm, sys, math, gzip
 # NB, the enwik8 data contains tokens from 9 to 240, but well round up to the nearest
 # power of two.
 NUM_TOKENS = 256
-# Used for converting between nats and bits
-LOG2E = math.log2(math.e)
 
 def sample(lnprobs, temperature=1.0):
     """
@@ -84,69 +82,6 @@ def sample_batch(data, length, batch_size):
     # -- Note that we add a singleton dimenson to each vector, s[None.,:], and then concatenate along that dimension.
 
     return inputs, target
-
-def compute_compression(model, data, context, batch_size):
-    """
-    Compute the _compression_ of a dataset under a model. That is, given a model, in how many bits could we represent
-    the dataset. This requires us to turn a given probability distribution into a code for the outcomes.
-
-    See [this video](https://youtu.be/mSneVjDvzNQ) for an explanation.
-
-    :param model: A sequence-to-sequence model that takes as input a (sub) sequence of integers and produces a probability
-    distributuion on the output.
-    :param data: A singe list of integers representing the  data
-    :return: The result of the computation in "bits per byte". That is, how many bits does the compressed representation
-    spend on each byte (=ASCII character) of the raw data.
-    """
-
-    bits, tot = 0.0, 0
-    batch = []
-    # Buffer, every time it fills up, we run it through the model
-    # --- For the sake of speed we want to process the data in batches. For each token in the data, we make a
-    #     prediction based on all the `context` tokens before it. This means that for each subsequence in the batch, we
-    #     need to shift the start/end indices ahead by one token.
-    #
-    #     After we pass the batch through the model, we look at only the probabilities predicted for the last token.
-
-    for current in range(data.size(0)):
-
-        fr = max(0, current - context)
-        to = current + 1
-
-        instance = data[fr:to].to(torch.long) # the subsequence of the data to add to the batch
-        if instance.size(0) < context + 1:
-            pad = torch.zeros(size=(context + 1 - instance.size(0),), dtype=torch.long)
-            instance = torch.cat([pad, instance], dim=0)
-            # -- the first tokens don't have enough tokens preceding them, so we pad them to the right size.
-
-            assert instance.size(0) == context + 1 # all instances should be `context` + 1 long
-
-        if torch.cuda.is_available():
-            instance = instance.cuda()
-
-        batch.append(instance[None, :])
-        # -- We add a singleton dimension to concatenate along later.
-
-        if len(batch) == batch_size or current == data.size(0) - 1:
-            # batch is full or we are at the last instance, run it through the model
-
-            b = len(batch)
-
-            all = torch.cat(batch, dim=0)
-            inputs = all[:, :-1]  # input
-            target = all[:, -1]  # target values
-
-            output = model(inputs)
-
-            lnprobs = output[torch.arange(b, device=d()), -1, target]
-            log2probs = lnprobs * LOG2E
-            # -- The model produces natural logarithms of probabilities, but we need base-2 logarithms of the
-            #    probabilities, since these give us bits.
-
-            bits += - log2probs.sum() # Add the bits for each character (the negative log_2 probabilties) to the running total
-            batch = []  # clear the buffer
-
-    return bits / data.size(0) # bits-per-byte
 
 def sample_sequence(model, seed, max_context, length=600, temperature=0.5, verbose=False):
     """
@@ -237,7 +172,7 @@ def go(arg):
         # Compute the loss
         loss = F.nll_loss(output.transpose(2, 1), target, reduction='mean')
 
-        tbw.add_scalar('transformer/train-loss', float(loss.item()) * LOG2E, i * arg.batch_size, instances_seen)
+        tbw.add_scalar('transformer/train-loss', float(loss.item()) * util.LOG2E, i * arg.batch_size, instances_seen)
         tbw.add_scalar('transformer/time-forward', t, instances_seen)
 
         loss.backward() # backward pass
@@ -272,15 +207,13 @@ def go(arg):
                 upto = data_test.size(0) if i == arg.num_batches - 1 else arg.test_subset
                 data_sub = data_test[:upto]
 
-                bits_per_byte = compute_compression(model, data_sub, context=arg.context, batch_size=arg.test_batchsize)
+                bits_per_byte = util.compute_compression(model, data_sub, context=arg.context, batch_size=arg.test_batchsize)
                 # -- Since we're not computing gradients, we can increase the batch size a little from what we used in
                 #    training.
 
                 print(f'epoch{i}: {bits_per_byte:.4} bits per byte')
                 tbw.add_scalar(f'transformer/eval-loss', bits_per_byte, i * arg.batch_size, instances_seen)
                 # -- 0.9 bit per byte is around the state of the art.
-
-
 
 if __name__ == "__main__":
 
