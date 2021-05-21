@@ -142,7 +142,7 @@ def compute_compression(model, data, context, batch_size, verbose=False):
 
             with torch.no_grad():
                 if next(model.parameters()).is_cuda:
-                    input = input.cuda()
+                    inputs = inputs.cuda()
                 output = model(inputs)
 
             if type(output) != torch.Tensor:
