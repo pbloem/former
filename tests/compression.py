@@ -31,7 +31,7 @@ def test_gpt2(batch_size=16, subset=None, name='distilgpt2'):
     if torch.cuda.is_available():
         model.cuda()
 
-    bits = compute_compression(model, data=encoded_input, context=model.config.n_ctx, batch_size=32, verbose=True)
+    bits = compute_compression(model, data=encoded_input, context=model.config.n_ctx, batch_size=batch_size, verbose=True)
 
     print('total bits: ', bits)
     print('bits per byte: ', bits/numchars)
