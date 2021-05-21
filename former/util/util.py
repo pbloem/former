@@ -118,12 +118,11 @@ def compute_compression(model, data, context, batch_size, verbose=False):
         if instance.size(0) < context:
             # the index in the output tensor of the character we want to predict
 
-            pad = torch.zeros(size=(context + 1 - instance.size(0),), dtype=torch.long)
+            pad = torch.zeros(size=(context - instance.size(0),), dtype=torch.long)
             instance = torch.cat([instance, pad], dim=0)
             # -- the first tokens don't have enough tokens preceding them, so we pad them to the right size.
 
-
-            assert instance.size(0) == context + 1 # all instances should be `context` + 1 long
+            assert instance.size(0) == context # all instances should be `context` + 1 long
 
         if torch.cuda.is_available():
             instance = instance.cuda()
