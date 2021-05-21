@@ -116,8 +116,6 @@ def compute_compression(model, data, context, batch_size, verbose=False):
         target_indices.append(instance.size(0) - 1)
 
         if instance.size(0) < context:
-            print(instance.size())
-
             # the index in the output tensor of the character we want to predict
 
             pad = torch.zeros(size=(context + 1 - instance.size(0),), dtype=torch.long)
@@ -135,8 +133,6 @@ def compute_compression(model, data, context, batch_size, verbose=False):
 
         if len(batch) == batch_size or current == data.size(0) - 1:
             # batch is full or we are at the last instance, run it through the model
-
-            print(target_indices)
 
             b = len(batch)
 
