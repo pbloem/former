@@ -115,7 +115,7 @@ def compute_compression(model, data, context, batch_size, verbose=False):
         instance = data[fr:to].to(torch.long) # the subsequence of the data to add to the batch
         # -- slice out an instance of size context + 1 (or shorter at the start of the data)
 
-        target_indices.append(instance.size(0) - 1)
+        target_indices.append(instance.size(0) - 2) # index of the last element fo the context
 
         if instance.size(0) < context + 1:
             # the index in the output tensor of the character we want to predict
