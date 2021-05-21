@@ -138,6 +138,9 @@ def compute_compression(model, data, context, batch_size, verbose=False):
 
             b = len(batch)
 
+            for inst in batch:
+                print(inst.size())
+
             all = torch.cat(batch, dim=0)
             inputs = all[:, :-1] # input
             target = all[:, -1]  # target values
