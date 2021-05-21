@@ -107,22 +107,25 @@ def compute_compression(model, data, context, batch_size, verbose=False):
     #     After we pass the batch through the model, we look at only the probabilities predicted for the last token.
     target_indices = []
     for current in tqdm.trange(data.size(0)) if verbose else range(data.size(0)):
+        # current is the character to be predicted
 
         fr = max(0, current - context)
         to = current + 1
 
         instance = data[fr:to].to(torch.long) # the subsequence of the data to add to the batch
+        # -- slice out an instance of size context + 1 (or shorter at the start of the data)
 
         target_indices.append(instance.size(0) - 1)
 
-        if instance.size(0) < context:
+        if instance.size(0) < context + 1:
             # the index in the output tensor of the character we want to predict
+            # -- It's context + 1, because we clip off the last token as a target
 
-            pad = torch.zeros(size=(context - instance.size(0),), dtype=torch.long)
+            pad = torch.zeros(size=(context + 1 - instance.size(0),), dtype=torch.long)
             instance = torch.cat([instance, pad], dim=0)
             # -- the first tokens don't have enough tokens preceding them, so we pad them to the right size.
 
-            assert instance.size(0) == context # all instances should be `context` + 1 long
+            assert instance.size(0) == context + 1 # all instances should be `context` + 1 long
 
         if torch.cuda.is_available():
             instance = instance.cuda()
@@ -136,7 +139,7 @@ def compute_compression(model, data, context, batch_size, verbose=False):
             b = len(batch)
 
             all = torch.cat(batch, dim=0)
-            inputs = all[:, :-1]  # input
+            inputs = all[:, :-1] # input
             target = all[:, -1]  # target values
 
             with torch.no_grad():
