@@ -162,10 +162,12 @@ def compute_compression(model, data, context, batch_size, verbose=False):
 
     return bits.item() # total nr of bits used
 
-
 def estimate_compression(model, data, nsamples, context, batch_size, verbose=False):
     """
     Estimates the compression by sampling random subsequences instead of predicting all characters.
+
+    NB: This doesn't work for GPT-2 style models with super-character tokenization, since the tokens and number of
+    characters are mismatched.
 
     :param model: A sequence-to-sequence model that takes as input a (sub) sequence of integers and produces a probability
     distributuion on the output.
@@ -196,7 +198,7 @@ def estimate_compression(model, data, nsamples, context, batch_size, verbose=Fal
         instance = data[fr:to].to(torch.long) # the subsequence of the data to add to the batch
         # -- slice out an instance of size context + 1 (or shorter at the start of the data)
 
-        target_indices.append(instance.size(0) - 2) # index of the last element fo the context
+        target_indices.append(instance.size(0) - 2) # index of the last element of the context
 
         if instance.size(0) < context + 1:
             # the index in the output tensor of the character we want to predict

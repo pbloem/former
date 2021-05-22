@@ -6,6 +6,8 @@ import transformers as trf
 from former import util
 from former.util import slice_diag, compute_compression, estimate_compression
 
+from collections.abc import Sequence
+
 import fire
 
 def test_gpt2(batch_size=16, subset=None, name='distilgpt2', samples=-1):
@@ -21,7 +23,10 @@ def test_gpt2(batch_size=16, subset=None, name='distilgpt2', samples=-1):
         text = str(file.read())
 
     if subset is not None:
-        text = text[:subset]
+        if isinstance(subset, Sequence):
+            text = text[subset[0]:subset[1]]
+        else:
+            text = text[:subset]
 
     numchars = len(text)
 
