@@ -10,7 +10,7 @@ from collections.abc import Sequence
 
 import fire
 
-def test_gpt2(batch_size=16, subset=None, name='distilgpt2', samples=-1):
+def test_gpt2(batch_size=16, subset=(None, None), name='distilgpt2', samples=-1):
     """
     Test the compute_compression function by checking the performance of GPT-2
     :return:
@@ -22,11 +22,9 @@ def test_gpt2(batch_size=16, subset=None, name='distilgpt2', samples=-1):
     with gzip.open(util.here() + '/data/enwik8.gz') as file:
         text = str(file.read())
 
-    if subset is not None:
-        if isinstance(subset, Sequence):
-            text = text[subset[0]:subset[1]]
-        else:
-            text = text[:subset]
+    fr, to = subset
+    fr, to = 0 if fr is None else fr, len(text) if to is None else to
+    text = text[fr:to]
 
     numchars = len(text)
 
