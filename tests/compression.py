@@ -39,10 +39,11 @@ def test_gpt2(batch_size=16, subset=(None, None), name='distilgpt2', tb_dir='./r
 
     context = model.config.n_ctx if context is None else context
 
-    bits, numchars = compute_compression(model, data=encoded_input, context=context, batch_size=batch_size, verbose=True, tbw=tbw, tok=tokenizer, skip=skip)
+    bits, numcharsr = compute_compression(model, data=encoded_input, context=context, batch_size=batch_size, verbose=True, tbw=tbw, tok=tokenizer, skip=skip)
 
     print('total bits: ', bits)
-    print('bits per byte: ', bits/numchars)
+    print('bits per byte (1): ', bits/numcharsr)
+    print('bits per byte (2): ', bits/numchars)
 
 if __name__ == '__main__':
 
