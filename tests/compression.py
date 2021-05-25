@@ -8,13 +8,17 @@ from former.util import slice_diag, compute_compression, estimate_compression
 
 from collections.abc import Sequence
 
+from torch.utils.tensorboard import SummaryWriter
+
 import fire
 
-def test_gpt2(batch_size=16, subset=(None, None), name='distilgpt2', samples=-1):
+def test_gpt2(batch_size=16, subset=(None, None), name='distilgpt2', tb_dir='./runs/', context=None, skip=0):
     """
     Test the compute_compression function by checking the performance of GPT-2
     :return:
     """
+
+    tbw = SummaryWriter(log_dir=tb_dir)
 
     tokenizer = trf.GPT2Tokenizer.from_pretrained(name)
     model = trf.GPT2LMHeadModel.from_pretrained(name)
@@ -33,15 +37,12 @@ def test_gpt2(batch_size=16, subset=(None, None), name='distilgpt2', samples=-1)
     if torch.cuda.is_available():
         model.cuda()
 
-    if samples < 0:
-        bits = compute_compression(model, data=encoded_input, context=model.config.n_ctx, batch_size=batch_size, verbose=True)
-    else:
-        bits = estimate_compression(model, data=encoded_input, context=model.config.n_ctx, batch_size=batch_size,
-                                   verbose=True, nsamples=samples)
+    context = model.config.n_ctx if context is None else context
+
+    bits, numchars = compute_compression(model, data=encoded_input, context=context, batch_size=batch_size, verbose=True, tbw=tbw, tok=tokenizer, skip=skip)
 
     print('total bits: ', bits)
-    div = numchars if samples < 0 else samples
-    print('bits per byte: ', bits/div)
+    print('bits per byte: ', bits/numchars)
 
 if __name__ == '__main__':
 

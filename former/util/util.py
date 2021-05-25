@@ -1,4 +1,7 @@
-import torch, os, time, math, tqdm, random
+import torch, os, time, math, tqdm, random, sys
+
+from torch.utils.tensorboard import SummaryWriter
+import transformers as trf
 
 def mask_(matrices, maskval=0.0, mask_diagonal=True):
     """
@@ -82,8 +85,11 @@ def slice_diag(matrix, l, dv=None):
 
 # Used for converting between nats and bits
 LOG2E = math.log2(math.e)
+LOGE2 = math.log(2.0)
 
-def compute_compression(model, data, context, batch_size, verbose=False):
+
+def compute_compression(model, data, context, batch_size, verbose=False,
+                        tbw:SummaryWriter=None, tok:trf.GPT2Tokenizer=None, skip=0):
     """
     Compute the _compression_ of a dataset under a model. That is, given a model, in how many bits could we represent
     the dataset. This requires us to turn a given probability distribution into a code for the outcomes.
@@ -106,8 +112,10 @@ def compute_compression(model, data, context, batch_size, verbose=False):
     #
     #     After we pass the batch through the model, we look at only the probabilities predicted for the last token.
     target_indices = []
-    for current in tqdm.trange(data.size(0)) if verbose else range(data.size(0)):
-        # current is the character to be predicted
+    i, ic = 0, 0
+    for current in tqdm.trange(skip, data.size(0)) if verbose else range(skip, data.size(0)):
+
+        # `current` is the character which we will ultimately predict
 
         fr = max(0, current - context)
         to = current + 1
@@ -115,9 +123,15 @@ def compute_compression(model, data, context, batch_size, verbose=False):
         instance = data[fr:to].to(torch.long) # the subsequence of the data to add to the batch
         # -- slice out an instance of size context + 1 (or shorter at the start of the data)
 
-        target_indices.append(instance.size(0) - 2) # index of the last element fo the context
+        # if tok is not None:
+        #     print(instance[:-1], tok.decode(instance[:-1]))
+        #     print(instance[-1:], tok.decode(instance[-1:]))
+
+        target_indices.append(instance.size(0) - 2) # index of the last element of the input to the model
 
         if instance.size(0) < context + 1:
+            assert skip < context # We shouldn't get here if we skip the first `context` characters
+
             # the index in the output tensor of the character we want to predict
             # -- It's context + 1, because we clip off the last token as a target
 
@@ -138,9 +152,10 @@ def compute_compression(model, data, context, batch_size, verbose=False):
 
             b = len(batch)
 
+            ti = torch.tensor(target_indices) + 1
             all = torch.cat(batch, dim=0)
             inputs = all[:, :-1] # input
-            target = all[:, -1]  # target values
+            target = all[torch.arange(b), ti]  # target values
 
             with torch.no_grad():
                 if next(model.parameters()).is_cuda:
@@ -153,14 +168,27 @@ def compute_compression(model, data, context, batch_size, verbose=False):
             assert output.size()[:2] == (b, context), f'was: {output.size()}, should be {(b, context, -1)}'
 
             lnprobs = output[torch.arange(b, device=d()), target_indices, target]
-            log2probs = lnprobs * LOG2E
+            log2probs = lnprobs / LOGE2
             # -- The model produces natural logarithms of probabilities, but we need base-2 logarithms of the
             #    probabilities, since these give us bits.
 
-            bits += - log2probs.sum() # Add the bits for each character (the negative log_2 probabilties) to the running total
+            if tbw is not None:
+                for j, lp in enumerate(log2probs):
+                    i += 1
+                    tbw.add_scalar('compression/bits-per-token', -lp, i)
+
+                    if tok is not None:
+                        nc = len(tok.decode(target[j]))
+                        ic += nc
+                        tbw.add_scalar('compression/bits-per-byte', -lp/nc, ic)
+
+            bits += - log2probs.sum() # Add the bits for each character (the negative log_2 probabilities) to the running total
             batch, target_indices = [], []  # clear the buffer
 
-    return bits.item() # total nr of bits used
+    if tok is not None:
+        return bits.item(), ic # total nr of bits used, total nr of characters seen
+    else:
+        return bits.item() # total nr of bits used
 
 def estimate_compression(model, data, nsamples, context, batch_size, verbose=False):
     """
