@@ -185,10 +185,13 @@ def compute_compression(model, data, context, batch_size, verbose=False,
             bits += - log2probs.sum() # Add the bits for each character (the negative log_2 probabilities) to the running total
             batch, target_indices = [], []  # clear the buffer
 
+    if isinstance(bits, torch.Tensor):
+        bits = bits.item()
+
     if tok is not None:
-        return bits.item(), ic # total nr of bits used, total nr of characters seen
+        return bits, ic # total nr of bits used, total nr of characters seen
     else:
-        return bits.item() # total nr of bits used
+        return bits # total nr of bits used
 
 def estimate_compression(model, data, nsamples, context, batch_size, verbose=False):
     """
