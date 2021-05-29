@@ -8,7 +8,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 import numpy as np
 
-def enwik8(path='data/enwik8.gz', n_train=int(90e6), n_valid=int(5e6), n_test=int(5e6)):
+def enwik8(path=None, n_train=int(90e6), n_valid=int(5e6), n_test=int(5e6)):
     """
     Load the enwik8 dataset from the Hutter challenge.
 
@@ -20,6 +20,9 @@ def enwik8(path='data/enwik8.gz', n_train=int(90e6), n_valid=int(5e6), n_test=in
     :param n_test:
     :return:
     """
+    if path is None:
+        path = here('data/enwik8.gz')
+
     with gzip.open(path) if path.endswith('.gz') else open(path) as file:
         X = np.fromstring(file.read(n_train + n_valid + n_test), dtype=np.uint8)
         trX, vaX, teX = np.split(X, [n_train, n_train + n_valid])
