@@ -199,7 +199,6 @@ def slice_diag(matrix, l, dv=None):
 LOG2E = math.log2(math.e)
 LOGE2 = math.log(2.0)
 
-
 def compute_compression(model, data, context, batch_size, verbose=False,
                         tbw:SummaryWriter=None, tok:trf.GPT2Tokenizer=None, skip=0):
 

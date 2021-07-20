@@ -12,11 +12,12 @@ class GTransformer(nn.Module):
     """
 
     def __init__(self, emb, heads, depth, seq_length, num_tokens, attention_type='default'):
+
         super().__init__()
 
         self.num_tokens = num_tokens
         self.token_embedding = nn.Embedding(embedding_dim=emb, num_embeddings=num_tokens)
-        self.pos_embedding = nn.Embedding(embedding_dim=emb, num_embeddings=(seq_length*2-1 if attention_type=='relative' else seq_length))
+        self.pos_embedding = nn.Embedding(embedding_dim=emb, num_embeddings=(seq_length * 2 - 1 if attention_type=='relative' else seq_length))
 
 
         tblocks = []
