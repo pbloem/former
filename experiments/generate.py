@@ -1,6 +1,7 @@
+import former
 from former import util, GTransformer
 
-from util import d, here, tic, toc
+from former.util import d, here, tic, toc
 
 import torch
 from torch import nn

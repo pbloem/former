@@ -72,7 +72,7 @@ class CTransformer(nn.Module):
         tblocks = []
         for i in range(depth):
             tblocks.append(
-                TransformerBlock(emb=emb, heads=heads, seq_length=seq_length, mask=False, dropout=dropout, wide=wide))
+                TransformerBlock(emb=emb, heads=heads, seq_length=seq_length, mask=False, dropout=dropout))
 
         self.tblocks = nn.Sequential(*tblocks)
 
