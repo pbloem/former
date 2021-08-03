@@ -12,6 +12,7 @@ setup(name='former',
             'torch',
             'tqdm',
             'numpy',
-            'torchtext'
+            'torchtext',
+            'tensorboard'
       ],
       zip_safe=False)

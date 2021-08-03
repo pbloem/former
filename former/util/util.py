@@ -3,7 +3,6 @@ import torch, os, time, math, tqdm, random, sys, gzip
 import torch.nn.functional as F
 import torch.distributions as dist
 
-import transformers as trf
 from torch.utils.tensorboard import SummaryWriter
 
 import numpy as np
@@ -179,7 +178,9 @@ def slice_diag(matrix, l, dv=None):
         dv = d(matrix)
 
     h, w = matrix.size(-2), matrix.size(-1)
-    assert w == 2 * l -1, f'{(h, w)=} {l=}'
+
+    assert w == 2 * l -1, f'(h, w)= {(h, w)}, l={l}'
+
     rest = matrix.size()[:-2]
 
     matrix = matrix.view(-1, h, w)
@@ -187,7 +188,7 @@ def slice_diag(matrix, l, dv=None):
 
     result = matrix.view(b, -1)
     result = torch.cat([result, torch.zeros(b, l, device=dv)], dim=1)
-    assert result.size() == (b, 2 * l * l), f'{result.size()=}'
+    assert result.size() == (b, 2 * l * l), f'result.size() {result.size()}'
 
     result = result.view(b, l, 2*l)
     result = result[:, :, :l]
@@ -200,7 +201,7 @@ LOG2E = math.log2(math.e)
 LOGE2 = math.log(2.0)
 
 def compute_compression(model, data, context, batch_size, verbose=False,
-                        tbw:SummaryWriter=None, tok:trf.GPT2Tokenizer=None, skip=0):
+                        tbw:SummaryWriter=None, tok=None, skip=0):
 
 
     """
@@ -224,8 +225,10 @@ def compute_compression(model, data, context, batch_size, verbose=False,
     #     need to shift the start/end indices ahead by one token.
     #
     #     After we pass the batch through the model, we look at only the probabilities predicted for the last token.
+
     target_indices = []
     i, ic = 0, 0
+
     for current in tqdm.trange(skip, data.size(0)) if verbose else range(skip, data.size(0)):
 
         # `current` is the character which we will ultimately predict
@@ -301,10 +304,7 @@ def compute_compression(model, data, context, batch_size, verbose=False,
     if isinstance(bits, torch.Tensor):
         bits = bits.item()
 
-    if tok is not None:
-        return bits, ic # total nr of bits used, total nr of characters seen
-    else:
-        return bits # total nr of bits used
+    return bits # total nr of bits used
 
 def estimate_compression(model, data, nsamples, context, batch_size, verbose=False):
     """

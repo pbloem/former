@@ -1,13 +1,13 @@
 from former import util
-
-from util import d, here
+from former.util import d, here
 
 import torch
 from torch import nn
 from torch.autograd import Variable
 import torch.nn.functional as F
 
-from torchtext import data, datasets, vocab
+# from torchtext import data, datasets, vocab
+from torchtext.legacy import data, datasets, vocab
 
 import numpy as np
 
