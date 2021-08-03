@@ -1,5 +1,4 @@
-from former import util
-from former.util import mask_, d
+from .util import mask_, d
 
 import torch
 from torch import nn
@@ -446,14 +445,14 @@ class SelfAttentionRelative(nn.Module):
         assert dot_tt.size()== (b*h, t, t), f'{dot_tt.size()}'
 
         dot_tp = torch.einsum('bis, bjs -> bij', queries, keys_pos) # -- token with position
-        dot_tp = util.slice_diag(dot_tp, l=t)
+        dot_tp = .util.slice_diag(dot_tp, l=t)
         assert dot_tp.size() == (b*h, t, t), f'{dot_tp.size()}'
 
         dot_pt = torch.einsum('bis, bjs -> bij', parma, keys)  # -- position with token
         assert dot_pt.size() == (b*h, t, t), f'{dot_pt.size()}'
 
         dot_pp =  torch.einsum('bis, bjs -> bij', parmb, keys_pos)  # -- pos with pos
-        dot_pp = util.slice_diag(dot_pp, l=t)
+        dot_pp = .util.slice_diag(dot_pp, l=t)
         assert dot_pp.size() == (b*h, t, t), f'{dot_pp.size()}'
 
         dot = dot_tt + dot_tp + dot_pt + dot_pp
@@ -500,6 +499,7 @@ class TransformerBlock(nn.Module):
         self.norm2 = nn.LayerNorm(emb)
 
         self.ff = nn.Sequential(
+
             nn.Linear(emb, ff_hidden_mult * emb),
             nn.ReLU(),
             nn.Linear(ff_hidden_mult * emb, emb)

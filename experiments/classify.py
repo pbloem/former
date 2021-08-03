@@ -1,4 +1,3 @@
-from _context import former
 from former import util
 
 from util import d, here

@@ -14,20 +14,29 @@ turns out that this simple configuration often works best.
 
 # Use
 
-You can clone the code and run the experiments from the root directory. E.g. 
+First, download or clone the repository. Then, in the directory that contains setup.py, run
+
+```
+pip install -e . 
+```
+
+The switch `-e` means when you edit the code, this changes the installed package ads well. 
+
+Then, from the same directory, run:
 
 ```
 python experiments/classify.py
 ```
+This will run a simple classification experiment on the IMDb dataset.
 
 Hyperparameters are passed as command line arguments. The defaults should work well. The classification data is 
-automatically downloaded, the wikipedia data is included in the repository.
+automatically downloaded, and the wikipedia data is included in the repository.
 
-You should be able to install as a package as well, with 
+You should be able to install directly from github as a package as well, with 
 ```
 pip install git+https://github.com/pbloem/former
 ```
-but I haven't tried this. It's probably easier to just copy over the code you need. Let me know if you need this for anything and it doesn't work. 
+but I haven't tried this. It's probably easier to just copy over the code you need.  
 
 ## Requirements
 
