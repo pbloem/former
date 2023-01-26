@@ -1,0 +1,5 @@
+*.txt
+*.pyc
+*.feat
+*.usfca*
+*.vocab

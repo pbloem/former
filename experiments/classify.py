@@ -46,6 +46,8 @@ def go(arg):
 
         train_iter, test_iter = data.BucketIterator.splits((train, test), batch_size=arg.batch_size, device=util.d())
 
+
+    
     print(f'- nr. of training examples {len(train_iter)}')
     print(f'- nr. of {"test" if arg.final else "validation"} examples {len(test_iter)}')
 
