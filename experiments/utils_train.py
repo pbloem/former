@@ -197,7 +197,6 @@ def select_samples(args, train_loader, epoch):
         # probs_dummy = list(train_loader.dataset.avg_probs)
         # print(probs_dummy)
         curr_prob = train_loader.dataset.avg_probs.copy()
-        print(curr_prob)
         # This is for the initial epochs, to force the moded to see all the samples:
         if curr_prob.max() == -1:
             curr_prob *= -1
