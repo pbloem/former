@@ -102,12 +102,8 @@ def train_CrossEntropy(args, model, device, train_loader, optimizer, epoch, lemn
     for texts, labels, index in train_loader:
 
         torch.cuda.empty_cache() 
-        # print('texts', texts)
-        # print('labels',labels)
-        # print('index', index)
         texts, labels, index = texts.to(device), labels.to(device), index.to(device)
         outputs = model(texts)
-        # print('outputs', outputs)
 
         prob, loss, loss_all = CE_loss(outputs, labels, device, args, criterion)
 
@@ -130,11 +126,6 @@ def train_CrossEntropy(args, model, device, train_loader, optimizer, epoch, lemn
                 epoch, counter * len(texts), num_samples, 100. * counter / len(train_loader), loss.item(),
                 prec1, optimizer.param_groups[0]['lr']))
 
-
-        # if args.scheduler_type == "linear":
-        #     max_it = int(len(train_loader.dataset.labels)*args.budget/args.batch_size)
-        #     optimizer = linearLR_per_it(args, optimizer, (epoch-1)*max_it + counter, max_it)
-
         counter = counter + 1
 
     return train_loss.avg, top5.avg, top1.avg
@@ -142,8 +133,7 @@ def train_CrossEntropy(args, model, device, train_loader, optimizer, epoch, lemn
 def update_sampling_metrics(args, train_loader, loss_all, prob, index, labels, l_1):
 
     index = index.cpu()
-    # if args.augmentation == 'ricap':
-    #     loss_all = l_1
+
 
     loss_all = loss_all.cpu().detach().numpy()
     labels = labels.cpu()
@@ -183,7 +173,7 @@ def testing(args, model, device, test_loader):
             loss_per_batch.append(F.nll_loss(output, target).item())
             pred = output.max(1, keepdim=True)[1] # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()
-            acc_val_per_batch.append(100. * correct / ((batch_idx+1)*args.test_batch_size))
+            acc_val_per_batch.append(100. * correct / ((batch_idx+1)*args.batch_size))
 
     test_loss /= len(test_loader.dataset)
     print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(

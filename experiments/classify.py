@@ -17,6 +17,12 @@ from torch.utils.tensorboard import SummaryWriter
 
 import random, tqdm, sys, math, gzip
 
+from torchtext.data.utils import get_tokenizer
+from torchtext.vocab import build_vocab_from_iterator
+import time
+from test1 import *
+from utils_train import *
+
 # Used for converting between nats and bits
 LOG2E = math.log2(math.e)
 TEXT = data.Field(lower=True, include_lengths=True, batch_first=True)
@@ -29,23 +35,12 @@ def go(arg):
     """
     tbw = SummaryWriter(log_dir=arg.tb_dir) # Tensorboard logging
 
-    # load the IMDB data
-    if arg.final:
-        train, test = datasets.IMDB.splits(TEXT, LABEL)
-
-        TEXT.build_vocab(train, max_size=arg.vocab_size - 2)
-        LABEL.build_vocab(train)
-
-        train_iter, test_iter = data.BucketIterator.splits((train, test), batch_size=arg.batch_size, device=util.d())
-    else:
-        tdata, _ = datasets.IMDB.splits(TEXT, LABEL)
-        train, test = tdata.split(split_ratio=0.8)
-
-        TEXT.build_vocab(train, max_size=arg.vocab_size - 2) # - 2 to make space for <unk> and <pad>
-        LABEL.build_vocab(train)
-
-        train_iter, test_iter = data.BucketIterator.splits((train, test), batch_size=arg.batch_size, device=util.d())
-
+    trainset, testset = get_dataset(arg)
+    train_iter = torch.utils.data.DataLoader(trainset, batch_size=arg.batch_size, \
+                                                shuffle=True, \
+                                                pin_memory=True, \
+                                                drop_last = True)
+    test_iter = torch.utils.data.DataLoader(testset, batch_size=arg.batch_size, shuffle=False,pin_memory=True)
 
     
     print(f'- nr. of training examples {len(train_iter)}')
@@ -59,7 +54,9 @@ def go(arg):
         mx = arg.max_length
 
     # create the model
+    NUM_CLS = 2
     model = former.CTransformer(emb=arg.embedding_size, heads=arg.num_heads, depth=arg.depth, seq_length=mx, num_tokens=arg.vocab_size, num_classes=NUM_CLS, max_pool=arg.max_pool)
+    # model = former.CTransformer(emb=256, heads=8, depth=6, seq_length=512, num_tokens=1000000, num_classes=NUM_CLS)
     if torch.cuda.is_available():
         model.cuda()
 
@@ -69,60 +66,53 @@ def go(arg):
     # training loop
     seen = 0
     for e in range(arg.num_epochs):
+        train_iter = prepare_loader(arg, train_iter, e)
+
+        loss_per_epoch, _, top1_train_ac = train_CrossEntropy(arg, model, device, \
+                                                        train_iter, opt, e)
+
+        print('######  testing')
+        loss_per_epoch, acc_val_per_epoch_i = testing(arg, model, device, test_iter)
 
         print(f'\n epoch {e}')
-        model.train(True)
+        # with torch.no_grad():
 
-        for batch in tqdm.tqdm(train_iter):
+        #     model.train(False)
+        #     tot, cor= 0.0, 0.0
 
-            opt.zero_grad()
+        #     for batch in test_iter:
 
-            input = batch.text[0]
-            label = batch.label - 1
+        #         input = batch[0]
+        #         label = batch[1]
+        #         input,label = input.to(device), label.to(device)
+        #         if input.size(1) > mx:
+        #             input = input[:, :mx]
+        #         out = model(input).argmax(dim=1)
 
-            if input.size(1) > mx:
-                input = input[:, :mx]
-            out = model(input)
-            loss = F.nll_loss(out, label)
+        #         tot += float(input.size(0))
+        #         cor += float((label == out).sum().item())
 
-            loss.backward()
-
-            # clip gradients
-            # - If the total gradient vector has a length > 1, we clip it back down to 1.
-            if arg.gradient_clipping > 0.0:
-                nn.utils.clip_grad_norm_(model.parameters(), arg.gradient_clipping)
-
-            opt.step()
-            sch.step()
-
-            seen += input.size(0)
-            tbw.add_scalar('classification/train-loss', float(loss.item()), seen)
-
-        with torch.no_grad():
-
-            model.train(False)
-            tot, cor= 0.0, 0.0
-
-            for batch in test_iter:
-
-                input = batch.text[0]
-                label = batch.label - 1
-
-                if input.size(1) > mx:
-                    input = input[:, :mx]
-                out = model(input).argmax(dim=1)
-
-                tot += float(input.size(0))
-                cor += float((label == out).sum().item())
-
-            acc = cor / tot
-            print(f'-- {"test" if arg.final else "validation"} accuracy {acc:.3}')
-            tbw.add_scalar('classification/test-loss', float(loss.item()), e)
+        #     acc = cor / tot
+        #     print(f'-- {"test" if arg.final else "validation"} accuracy {acc:.3}')
+        #     print('loss_per_epoch: ',loss_per_epoch)
+            # tbw.add_scalar('classification/test-loss', float(loss.item()), e)
 
 
 if __name__ == "__main__":
 
     parser = ArgumentParser()
+    parser.add_argument("-m","--method",
+                        dest="method",
+                        help="type of sgd",
+                        default='unif-sgd', type=str)
+    
+    parser.add_argument('--c_sgd_warmup', 
+                        help="Number of ecpochs with random sampling for p-SGD andd c-SGD",
+                        default=0, type=int)
+
+    parser.add_argument('--budget',
+                        help='Percentage of buget to use',
+                        default=1.0,type=float)
 
     parser.add_argument("-e", "--num-epochs",
                         dest="num_epochs",
