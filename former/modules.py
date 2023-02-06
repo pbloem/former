@@ -6,6 +6,8 @@ import torch.nn.functional as F
 
 import random, math, sys
 
+
+
 class SelfAttention(nn.Module):
     """
     Canonical implementation of multi-head self attention.
@@ -37,6 +39,13 @@ class SelfAttention(nn.Module):
         self.unifyheads = nn.Linear(emb, emb)
 
     def forward(self, x):
+        
+        # if input is a tuple, it contains the previous attention
+        if isinstance(x, tuple):
+            x, prev_attn = x
+        else:
+            prev_attn = None
+
 
         b, t, e = x.size()
         h = self.heads
@@ -77,14 +86,20 @@ class SelfAttention(nn.Module):
 
         dot = F.softmax(dot, dim=2)
         # - dot now has row-wise self-attention probabilities
-
+        
+        
         # apply the self attention to the values
         out = torch.bmm(dot, values).view(b, h, t, s)
 
         # swap h, t back, unify heads
         out = out.transpose(1, 2).contiguous().view(b, t, s * h)
+        
+        # concat attention
+        # if prev_attn is not None:
+            # dot = torch.cat([prev_attn, dot], dim=1)
 
-        return self.unifyheads(out)
+        # print('dot', dot.size())
+        return self.unifyheads(out), dot
 
 class SelfAttentionNarrow(nn.Module):
     """
@@ -476,7 +491,7 @@ class SelfAttentionRelative(nn.Module):
 
 class TransformerBlock(nn.Module):
 
-    def __init__(self, emb, heads, mask, seq_length, ff_hidden_mult=4, dropout=0.0, attention_type='default', pos_embedding=None):
+    def __init__(self, emb, heads, mask, seq_length, ff_hidden_mult=4, dropout=0.0, attention_type='default', pos_embedding=None,output_attention=False):
         super().__init__()
 
         if attention_type == 'default':
@@ -508,8 +523,15 @@ class TransformerBlock(nn.Module):
         self.do = nn.Dropout(dropout)
 
     def forward(self, x):
+        # x is a tuple (x, prev_att)
+        # prev_att is the attention weights from the previous layer
+        # this is used for the relative attention
+        if isinstance(x, tuple):
+            x, prev_att = x
+        else:
+            prev_att = None
 
-        attended = self.attention(x)
+        attended, att  = self.attention(x)
 
         x = self.norm1(attended + x)
 
@@ -521,4 +543,11 @@ class TransformerBlock(nn.Module):
 
         x = self.do(x)
 
-        return x
+        # concatenate the attention weights from the previous layer
+        if prev_att is not None:
+            att = (*prev_att, att)
+        else:
+            att = (att,)
+
+
+        return x, att
