@@ -92,11 +92,11 @@ class CTransformer(nn.Module):
         x = tokens + positions
         x = self.do(x)
 
-        x = self.tblocks(x)
+        x, att = self.tblocks(x)
 
         x = x.max(dim=1)[0] if self.max_pool else x.mean(dim=1) # pool over the time dimension
 
         x = self.toprobs(x)
 
-        return F.log_softmax(x, dim=1)
+        return F.log_softmax(x, dim=1), att
 

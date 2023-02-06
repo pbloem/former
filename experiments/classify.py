@@ -9,6 +9,7 @@ import torch.nn.functional as F
 
 # from torchtext import data, datasets, vocab
 from torchtext.legacy import data, datasets, vocab
+import pickle
 
 import numpy as np
 
@@ -16,12 +17,17 @@ from argparse import ArgumentParser
 from torch.utils.tensorboard import SummaryWriter
 
 import random, tqdm, sys, math, gzip
-
+import os
+from copy import deepcopy
+from datetime import datetime
 # Used for converting between nats and bits
 LOG2E = math.log2(math.e)
 TEXT = data.Field(lower=True, include_lengths=True, batch_first=True)
 LABEL = data.Field(sequential=False)
 NUM_CLS = 2
+MODEL_OUTPUT_PATH = './model_output'
+
+
 
 def go(arg):
     """
@@ -33,12 +39,15 @@ def go(arg):
     if arg.final:
         train, test = datasets.IMDB.splits(TEXT, LABEL)
 
+
         TEXT.build_vocab(train, max_size=arg.vocab_size - 2)
         LABEL.build_vocab(train)
 
         train_iter, test_iter = data.BucketIterator.splits((train, test), batch_size=arg.batch_size, device=util.d())
+
     else:
         tdata, _ = datasets.IMDB.splits(TEXT, LABEL)
+        # print(f'tdata ======> ',tdata.split())
         train, test = tdata.split(split_ratio=0.8)
 
         TEXT.build_vocab(train, max_size=arg.vocab_size - 2) # - 2 to make space for <unk> and <pad>
@@ -61,9 +70,18 @@ def go(arg):
     if torch.cuda.is_available():
         model.cuda()
 
-    opt = torch.optim.Adam(lr=arg.lr, params=model.parameters())
+    # apply parallelism
+    model = nn.DataParallel(model, device_ids=[0, 1, 2])
+
+    opt = torch.optim.SGD(
+        lr=arg.lr, params=model.parameters(), momentum=arg.momentum)
+
+    # opt = torch.optim.Adam(lr=arg.lr, params=model.parameters())
     sch = torch.optim.lr_scheduler.LambdaLR(opt, lambda i: min(i / (arg.lr_warmup / arg.batch_size), 1.0))
 
+    # best output to save model
+    best_accuracy = 0
+    best_model_state = None
     # training loop
     seen = 0
     for e in range(arg.num_epochs):
@@ -80,7 +98,7 @@ def go(arg):
 
             if input.size(1) > mx:
                 input = input[:, :mx]
-            out = model(input)
+            out, att = model(input)
             loss = F.nll_loss(out, label)
 
             loss.backward()
@@ -108,7 +126,8 @@ def go(arg):
 
                 if input.size(1) > mx:
                     input = input[:, :mx]
-                out = model(input).argmax(dim=1)
+                out, att = model(input)
+                out = out.argmax(dim=1)
 
                 tot += float(input.size(0))
                 cor += float((label == out).sum().item())
@@ -116,6 +135,17 @@ def go(arg):
             acc = cor / tot
             print(f'-- {"test" if arg.final else "validation"} accuracy {acc:.3}')
             tbw.add_scalar('classification/test-loss', float(loss.item()), e)
+            # if acc > best_accuracy:
+            #     best_accuracy, best_model_state = acc, deepcopy(
+            #         model.state_dict())
+
+    return model
+
+    if not os.path.exists(MODEL_OUTPUT_PATH):
+        os.mkdir(MODEL_OUTPUT_PATH)
+    time_stamp = datetime.now()
+    torch.save(best_model_state, MODEL_OUTPUT_PATH +
+               f'{time_stamp}_SGD_momentum_{arg.momentum}_acc_{best_accuracy:3f}')
 
 
 if __name__ == "__main__":
@@ -135,7 +165,7 @@ if __name__ == "__main__":
     parser.add_argument("-l", "--learn-rate",
                         dest="lr",
                         help="Learning rate",
-                        default=0.0001, type=float)
+                        default=0.00001, type=float)
 
     parser.add_argument("-T", "--tb_dir", dest="tb_dir",
                         help="Tensorboard logging directory",
@@ -183,9 +213,21 @@ if __name__ == "__main__":
                         dest="gradient_clipping",
                         help="Gradient clipping.",
                         default=1.0, type=float)
+    
+    parser.add_argument("--momentum",
+                        dest="momentum",
+                        help="momentum for SGD",
+                        default=0.9, type=float)
 
     options = parser.parse_args()
 
+
     print('OPTIONS ', options)
 
-    go(options)
+    model = go(options)
+
+    time = datetime.now()
+    print('saving model ..')
+    with open(f'{time}-model.pkl', 'wb') as f:
+        pickle.dump(model, f)
+    print('model saved')
