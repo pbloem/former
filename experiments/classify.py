@@ -25,7 +25,6 @@ LOG2E = math.log2(math.e)
 TEXT = data.Field(lower=True, include_lengths=True, batch_first=True)
 LABEL = data.Field(sequential=False)
 NUM_CLS = 2
-MODEL_OUTPUT_PATH = './model_output'
 
 
 
@@ -79,9 +78,6 @@ def go(arg):
     # opt = torch.optim.Adam(lr=arg.lr, params=model.parameters())
     sch = torch.optim.lr_scheduler.LambdaLR(opt, lambda i: min(i / (arg.lr_warmup / arg.batch_size), 1.0))
 
-    # best output to save model
-    best_accuracy = 0
-    best_model_state = None
     # training loop
     seen = 0
     for e in range(arg.num_epochs):
@@ -135,9 +131,7 @@ def go(arg):
             acc = cor / tot
             print(f'-- {"test" if arg.final else "validation"} accuracy {acc:.3}')
             tbw.add_scalar('classification/test-loss', float(loss.item()), e)
-            # if acc > best_accuracy:
-            #     best_accuracy, best_model_state = acc, deepcopy(
-            #         model.state_dict())
+         
 
     return model
 
