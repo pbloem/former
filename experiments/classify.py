@@ -141,12 +141,6 @@ def go(arg):
 
     return model
 
-    if not os.path.exists(MODEL_OUTPUT_PATH):
-        os.mkdir(MODEL_OUTPUT_PATH)
-    time_stamp = datetime.now()
-    torch.save(best_model_state, MODEL_OUTPUT_PATH +
-               f'{time_stamp}_SGD_momentum_{arg.momentum}_acc_{best_accuracy:3f}')
-
 
 if __name__ == "__main__":
 
