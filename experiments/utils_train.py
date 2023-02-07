@@ -84,7 +84,7 @@ def ricap_criterion(criterion, pred, c_, W_):
 #############################################################################################
 ########################            Training function             ###########################
 
-def train_CrossEntropy(args, model, device, train_loader, optimizer, epoch, lemniscate = 0, criterion = 0):
+def train_CrossEntropy(args, model, device, train_loader, optimizer, scheduler, epoch, lemniscate = 0, criterion = 0):
     train_loss = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
@@ -109,6 +109,7 @@ def train_CrossEntropy(args, model, device, train_loader, optimizer, epoch, lemn
 
         loss.backward()
         optimizer.step()
+        scheduler.step()
         optimizer.zero_grad()
 
         prec1, prec5 = accuracy_v2(outputs, labels, top=[1, 2])
@@ -168,6 +169,9 @@ def testing(args, model, device, test_loader):
         for batch_idx, (data, target, *_) in enumerate(test_loader):
             data, target = data.to(device), target.to(device)
             output = model(data)
+            print(data)
+            print(target)
+            print(output)
             output = F.log_softmax(output, dim=1)
             test_loss += F.nll_loss(output, target, reduction='sum').item()
             loss_per_batch.append(F.nll_loss(output, target).item())

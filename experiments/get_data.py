@@ -2,7 +2,6 @@ import os
 import numpy as np
 
 import torch
-import torchtext.datasets
 from torchtext.datasets import IMDB
 from torchtext.data.utils import get_tokenizer
 from torchtext.vocab import build_vocab_from_iterator
@@ -11,8 +10,6 @@ from torch.utils.data.dataset import random_split
 from torchtext.data.functional import to_map_style_dataset
 
 import torch.nn.functional as F
-
-import torchvision as tv
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -27,7 +24,6 @@ def make_dataset(args):
     train_iter = IMDB(split='train')
     vocab = build_vocab_from_iterator(yield_tokens(train_iter), specials=["<unk>"])
     vocab.set_default_index(vocab["<unk>"])
-
     text_pipeline = lambda x: vocab(tokenizer(x))
     label_pipeline = lambda x: 0 if x=='neg' else 1
 
