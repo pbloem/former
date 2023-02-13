@@ -9,6 +9,7 @@ import torch.nn.functional as F
 
 # from torchtext import data, datasets, vocab
 from torchtext.legacy import data, datasets, vocab
+import pickle
 
 import numpy as np
 
@@ -23,11 +24,16 @@ import time
 from get_data import *
 from utils_train import *
 
+import os
+from copy import deepcopy
+from datetime import datetime
 # Used for converting between nats and bits
 LOG2E = math.log2(math.e)
 TEXT = data.Field(lower=True, include_lengths=True, batch_first=True)
 LABEL = data.Field(sequential=False)
 NUM_CLS = 2
+
+
 
 def go(arg):
     """
@@ -57,6 +63,7 @@ def go(arg):
     if torch.cuda.is_available():
         model.cuda()
 
+    model = nn.DataParallel(model, device_ids=[0, 1, 2])
     # opt = torch.optim.Adam(lr=arg.lr, params=model.parameters())
     opt = torch.optim.SGD(lr=arg.lr,params=model.parameters())
     sch = torch.optim.lr_scheduler.LambdaLR(opt, lambda i: min(i / (arg.lr_warmup / arg.batch_size), 1.0))
@@ -151,9 +158,21 @@ if __name__ == "__main__":
                         dest="gradient_clipping",
                         help="Gradient clipping.",
                         default=1.0, type=float)
+    
+    parser.add_argument("--momentum",
+                        dest="momentum",
+                        help="momentum for SGD",
+                        default=0.9, type=float)
 
     options = parser.parse_args()
 
+
     print('OPTIONS ', options)
 
-    go(options)
+    model = go(options)
+
+    time = datetime.now()
+    print('saving model ..')
+    with open(f'{time}-model.pkl', 'wb') as f:
+        pickle.dump(model, f)
+    print('model saved')
