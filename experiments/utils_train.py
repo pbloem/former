@@ -165,13 +165,11 @@ def testing(args, model, device, test_loader):
     acc_val_per_batch =[]
     test_loss = 0
     correct = 0
+    incorrect_indices = []
     with torch.no_grad():
-        for batch_idx, (data, target, *_) in enumerate(test_loader):
+        for batch_idx, (data, target, index) in enumerate(test_loader):
             data, target = data.to(device), target.to(device)
             output = model(data)
-            print(data)
-            print(target)
-            print(output)
             output = F.log_softmax(output, dim=1)
             test_loss += F.nll_loss(output, target, reduction='sum').item()
             loss_per_batch.append(F.nll_loss(output, target).item())

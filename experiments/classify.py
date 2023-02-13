@@ -103,7 +103,7 @@ if __name__ == "__main__":
     parser.add_argument("-l", "--learn-rate",
                         dest="lr",
                         help="Learning rate",
-                        default=0.00001, type=float)
+                        default=0.1, type=float)
 
     parser.add_argument("-T", "--tb_dir", dest="tb_dir",
                         help="Tensorboard logging directory",

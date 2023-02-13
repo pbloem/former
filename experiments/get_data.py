@@ -65,6 +65,7 @@ class MiniImagenet84(Dataset):
         self.labels = labels
         self.train_data = self.data
         self.train_labels = self.labels
+        self.indexes = np.arange(len(data))
 
         self.args = args
         # self.num_classes = self.args.num_classes
@@ -81,10 +82,12 @@ class MiniImagenet84(Dataset):
     def __getitem__(self, index):
 
         text, labels = self.data[index], self.labels[index]
-        if self.train == "True":
-            return text, labels, index
-        elif self.train == "False":
-            return text, labels
+        return text, labels, index
+        # if self.train == "True":
+        #     return text, labels, index
+        # elif self.train == "False":
+        #     return text, labels
+        
 
     def __len__(self):
         return len(self.data)
