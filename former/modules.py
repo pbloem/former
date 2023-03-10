@@ -11,12 +11,13 @@ class SelfAttention(nn.Module):
     Canonical implementation of multi-head self attention.
     """
 
-    def __init__(self, emb, heads=8, mask=False):
+    def __init__(self, emb, heads=8, mask=False, kqnorm=False):
         """
 
         :param emb:
         :param heads:
         :param mask:
+        :param kqnorm:
         """
 
         super().__init__()
@@ -36,6 +37,11 @@ class SelfAttention(nn.Module):
 
         self.unifyheads = nn.Linear(emb, emb)
 
+        self.kqnorm = kqnorm
+        if kqnorm:
+            self.kln = nn.LayerNorm([s])
+            self.qln = nn.LayerNorm([s])
+
     def forward(self, x):
 
         b, t, e = x.size()
@@ -52,8 +58,95 @@ class SelfAttention(nn.Module):
         queries = queries.view(b, t, h, s)
         values  = values.view(b, t, h, s)
 
+        if self.kqnorm:
+            keys = self.kln(keys)
+            queries = self.qln(queries)
+
         # -- We first compute the k/q/v's on the whole embedding vectors, and then split into the different heads.
         #    See the following video for an explanation: https://youtu.be/KmAISyVvE1Y
+
+        # Compute scaled dot-product self-attention
+
+        # - fold heads into the batch dimension
+        keys = keys.transpose(1, 2).contiguous().view(b * h, t, s)
+        queries = queries.transpose(1, 2).contiguous().view(b * h, t, s)
+        values = values.transpose(1, 2).contiguous().view(b * h, t, s)
+
+        queries = queries / (e ** (1/4))
+        keys    = keys / (e ** (1/4))
+        # - Instead of dividing the dot products by sqrt(e), we scale the keys and values.
+        #   This should be more memory efficient
+
+        # - get dot product of queries and keys, and scale
+        dot = torch.bmm(queries, keys.transpose(1, 2))
+
+        assert dot.size() == (b*h, t, t)
+
+        if self.mask: # mask out the upper half of the dot matrix, excluding the diagonal
+            mask_(dot, maskval=float('-inf'), mask_diagonal=False)
+
+        dot = F.softmax(dot, dim=2)
+        # - dot now has row-wise self-attention probabilities
+
+        # apply the self attention to the values
+        out = torch.bmm(dot, values).view(b, h, t, s)
+
+        # swap h, t back, unify heads
+        out = out.transpose(1, 2).contiguous().view(b, t, s * h)
+
+        return self.unifyheads(out)
+
+class SelfAttentionAlt(nn.Module):
+    """
+    Alternative implementation of self-attention. Should contain fewer parameters, may be faster?
+    """
+
+    def __init__(self, emb, heads=8, mask=False):
+        """
+
+        :param emb:
+        :param heads:
+        :param mask:
+        """
+
+        super().__init__()
+
+        assert emb % heads == 0, f'Embedding dimension ({emb}) should be divisible by nr. of heads ({heads})'
+
+        self.emb = emb
+        self.heads = heads
+        self.mask = mask
+
+        s = emb // heads
+        # - We will break the embedding into `heads` chunks and feed each to a different attention head
+
+        self.downproj    = nn.Linear(emb, emb, bias=False)
+        # -- Single e x e priojection applied before splitting
+
+        # The key, query and value projections of the different heads
+        self.tokeys    = nn.Parameter(torch.empty(heads, s, s))
+        self.toqueries = nn.Parameter(torch.empty(heads, s, s))
+        self.tovalues  = nn.Parameter(torch.empty(heads, s, s))
+
+        self.unifyheads = nn.Linear(emb, emb)
+
+    def forward(self, x):
+
+        b, t, e = x.size()
+        h = self.heads
+        assert e == self.emb, f'Input embedding dim ({e}) should match layer embedding dim ({self.emb})'
+
+        s = e // h
+
+        x = self.downproj(x).view(b, t, h, s)
+
+        keys    = torch.einsum('bthk, hik -> bthi', x, self.tokeys)
+        queries = torch.einsum('bthk, hik -> bthi', x, self.toqueries)
+        values  = torch.einsum('bthk, hik -> bthi', x, self.tovalues)
+
+        keys    = keys.view(b, t, h, s)
+        queries = queries.view(b, t, h, s)
+        values  = values.view(b, t, h, s)
 
         # Compute scaled dot-product self-attention
 
@@ -475,12 +568,18 @@ class SelfAttentionRelative(nn.Module):
 
 
 class TransformerBlock(nn.Module):
+    """
+    A straightforward transformer block.
+    """
 
-    def __init__(self, emb, heads, mask, seq_length, ff_hidden_mult=4, dropout=0.0, attention_type='default', pos_embedding=None):
+    def __init__(self, emb, heads, mask, seq_length, ff_hidden_mult=4, dropout=0.0, attention_type='default',
+                 pos_embedding=None, sa_kwargs={}):
         super().__init__()
 
         if attention_type == 'default':
-            self.attention = SelfAttention(emb, heads=heads, mask=mask)
+            self.attention = SelfAttention(emb, heads=heads, mask=mask, **sa_kwargs)
+        elif attention_type == 'alt':
+            self.attention = SelfAttentionAlt(emb, heads=heads, mask=mask)
         elif attention_type == 'wide':
             self.attention = SelfAttentionWide(emb, heads=heads, mask=mask)
         elif attention_type == 'gpt2':
