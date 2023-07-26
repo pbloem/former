@@ -566,6 +566,102 @@ class SelfAttentionRelative(nn.Module):
 
         return self.unifyheads(out)
 
+class Attention(nn.Module):
+    """
+    Implementation of attention with the queries, keys and values separated.
+    """
+
+    def __init__(self, emb, heads=8, mask=False, kqnorm=False):
+        """
+
+        :param emb: Embedding dimension
+        :param heads:
+        :param mask:
+        :param kqnorm:
+        """
+
+        super().__init__()
+
+        assert emb % heads == 0, f'Embedding dimension ({emb}) should be divisible by nr. of heads ({heads})'
+
+        self.emb = emb
+        self.heads = heads
+        self.mask = mask
+
+        s = emb // heads
+        # - We will break the embedding into `heads` chunks and feed each to a different attention head
+
+        self.tokeys    = nn.Linear(emb, emb, bias=False)
+        self.toqueries = nn.Linear(emb, emb, bias=False)
+        self.tovalues  = nn.Linear(emb, emb, bias=False)
+
+        self.unifyheads = nn.Linear(emb, emb)
+
+        self.kqnorm = kqnorm
+        if kqnorm:
+            self.kln = nn.LayerNorm([s])
+            self.qln = nn.LayerNorm([s])
+
+    def forward(self, queries, keys, values):
+
+        assert keys.size() == values.size()
+
+        b, tk, e = keys.size()
+
+        assert queries.size(0) == b and queries.size(2) == e
+
+        tq = queries.size(1)
+
+        h = self.heads
+        assert e == self.emb, f'Input embedding dim ({e}) should match layer embedding dim ({self.emb})'
+
+        s = e // h
+
+        keys    = self.tokeys(keys)
+        queries = self.toqueries(queries)
+        values  = self.tovalues(values)
+
+        queries = queries.view(b, tq, h, s)
+        keys    = keys.view(b, tk, h, s)
+        values  = values.view(b, tk, h, s)
+
+        if self.kqnorm:
+            keys = self.kln(keys)
+            queries = self.qln(queries)
+
+        # -- We first compute the k/q/v's on the whole embedding vectors, and then split into the different heads.
+        #    See the following video for an explanation: https://youtu.be/KmAISyVvE1Y
+
+        # Compute scaled dot-product self-attention
+
+        # - fold heads into the batch dimension
+        queries = queries.transpose(1, 2).contiguous().view(b * h, tq, s)
+        keys = keys.transpose(1, 2).contiguous().view(b * h, tk, s)
+        values = values.transpose(1, 2).contiguous().view(b * h, tk, s)
+
+        queries = queries / (e ** (1/4))
+        keys    = keys / (e ** (1/4))
+        # - Instead of dividing the dot products by sqrt(e), we scale the keys and values.
+        #   This should be more memory efficient
+
+        # - get dot product of queries and keys, and scale
+        dot = torch.bmm(queries, keys.transpose(1, 2))
+
+        assert dot.size() == (b*h, tq, tk)
+
+        if self.mask: # mask out the upper half of the dot matrix, excluding the diagonal
+            mask_(dot, maskval=float('-inf'), mask_diagonal=False)
+
+        dot = F.softmax(dot, dim=2)
+        # - dot now has row-wise self-attention probabilities
+
+        # apply the self attention to the values
+        out = torch.bmm(dot, values).view(b, h, tq, s)
+
+        # swap h, t back, unify heads
+        out = out.transpose(1, 2).contiguous().view(b, tq, s * h)
+
+        return self.unifyheads(out)
 
 class TransformerBlock(nn.Module):
     """
