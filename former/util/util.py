@@ -27,6 +27,57 @@ def enwik8(path=None, n_train=int(90e6), n_valid=int(5e6), n_test=int(5e6)):
         trX, vaX, teX = np.split(X, [n_train, n_train + n_valid])
         return torch.from_numpy(trX), torch.from_numpy(vaX), torch.from_numpy(teX)
 
+def enwik8_bytes(path=None, split=(90, 5, 5)):
+    """
+    Load the enwik8 dataset from the Hutter challenge as a python list of bytes
+
+    :param path:
+    :param n_train:
+    :param n_valid:
+    :param n_test:
+    :return:
+    """
+
+
+    if path is None:
+        path = here('data/enwik8.gz')
+
+    with gzip.open(path, 'r') if path.endswith('.gz') else open(path, 'rb') as file:
+        all = file.read()
+
+        split = tuple(s/sum(split) for s in split)
+        split = tuple(int(s * len(all)) for s in split)
+
+        train, val, test = all[:split[0]], all[split[0]:split[0]+split[1]], all[split[0]+split[1]:]
+        return train, val, test
+
+
+def enwik8_string(path=None, split=(90, 5, 5)):
+    """
+    Load the enwik8 dataset from the Hutter challenge.
+
+    Adapted from https://github.com/openai/blocksparse/blob/master/examples/transformer/enwik8.py
+
+    :param path:
+    :param n_train:
+    :param n_valid:
+    :param n_test:
+    :return:
+    """
+
+
+    if path is None:
+        path = here('data/enwik8.gz')
+
+    with gzip.open(path, 'rt') if path.endswith('.gz') else open(path, 'r') as file:
+        all = file.read()
+
+        split = tuple(s/sum(split) for s in split)
+        split = tuple(int(s * len(all)) for s in split)
+
+        train, val, test = all[:split[0]], all[split[0]:split[0]+split[1]], all[split[0]+split[1]:]
+        return train, val, test
+
 def sample(lnprobs, temperature=1.0):
     """
     Sample an element from a categorical distribution
@@ -306,7 +357,7 @@ def compute_compression(model, data, context, batch_size, verbose=False,
 
     return bits # total nr of bits used
 
-def estimate_compression(model, data, nsamples, context, batch_size, verbose=False):
+def estimate_compression(model, data, nsamples, context, batch_size, verbose=False, model_produces_logits=False):
     """
     Estimates the compression by sampling random subsequences instead of predicting all characters.
 
@@ -315,7 +366,7 @@ def estimate_compression(model, data, nsamples, context, batch_size, verbose=Fal
 
     :param model: A sequence-to-sequence model that takes as input a (sub) sequence of integers and produces a probability
     distributuion on the output.
-    :param data: A singe list of integers representing the  data
+    :param data: A singe list of integers representing the data
     :return: The result of the computation in "bits per byte". That is, how many bits does the compressed representation
     spend on each byte (=ASCII character) of the raw data.
     """
@@ -333,7 +384,8 @@ def estimate_compression(model, data, nsamples, context, batch_size, verbose=Fal
     #
     #     After we pass the batch through the model, we look at only the probabilities predicted for the last token.
     target_indices = []
-    for current in tqdm.tqdm(gtargets) if verbose else range(gtargets):
+
+    for current in (tqdm.tqdm(gtargets) if verbose else gtargets):
         # current is the character to be predicted
 
         fr = max(0, current - context)
@@ -374,6 +426,9 @@ def estimate_compression(model, data, nsamples, context, batch_size, verbose=Fal
                     inputs = inputs.cuda()
                 output = model(inputs)
 
+                if model_produces_logits:
+                    output = F.log_softmax(output, dim=-1)
+
             if type(output) != torch.Tensor:
                 output = torch.log_softmax(output.logits, dim=2) # To make the method work for GPT2 models from Huggingface
 
@@ -387,4 +442,4 @@ def estimate_compression(model, data, nsamples, context, batch_size, verbose=Fal
             bits += - log2probs.sum() # Add the bits for each character (the negative log_2 probabilties) to the running total
             batch, target_indices = [], []  # clear the buffer
 
-    return bits.item() # total nr of bits used
+    return bits.item() / nsamples # total nr of bits used
