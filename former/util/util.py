@@ -413,7 +413,7 @@ def estimate_compression(model, data, nsamples, context, batch_size, verbose=Fal
         batch.append(instance[None, :])
         # -- We add a singleton dimension to concatenate along later.
 
-        if len(batch) == batch_size or current == gtargets.size(0) - 1:
+        if len(batch) == batch_size or current == len(gtargets) - 1:
             # batch is full, or we are at the last instance, run it through the model
 
             b = len(batch)
