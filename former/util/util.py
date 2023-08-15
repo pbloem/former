@@ -49,6 +49,7 @@ def enwik8_bytes(path=None, split=(90, 5, 5)):
         split = tuple(int(s * len(all)) for s in split)
 
         train, val, test = all[:split[0]], all[split[0]:split[0]+split[1]], all[split[0]+split[1]:]
+
         return train, val, test
 
 
@@ -412,8 +413,8 @@ def estimate_compression(model, data, nsamples, context, batch_size, verbose=Fal
         batch.append(instance[None, :])
         # -- We add a singleton dimension to concatenate along later.
 
-        if len(batch) == batch_size or current == data.size(0) - 1:
-            # batch is full or we are at the last instance, run it through the model
+        if len(batch) == batch_size or current == gtargets.size(0) - 1:
+            # batch is full, or we are at the last instance, run it through the model
 
             b = len(batch)
 
