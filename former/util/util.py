@@ -386,7 +386,7 @@ def estimate_compression(model, data, nsamples, context, batch_size, verbose=Fal
     #     After we pass the batch through the model, we look at only the probabilities predicted for the last token.
     target_indices = []
 
-    for current in (tqdm.tqdm(gtargets) if verbose else gtargets):
+    for i, current in enumerate(tqdm.tqdm(gtargets) if verbose else gtargets):
         # current is the character to be predicted
 
         fr = max(0, current - context)
@@ -413,7 +413,7 @@ def estimate_compression(model, data, nsamples, context, batch_size, verbose=Fal
         batch.append(instance[None, :])
         # -- We add a singleton dimension to concatenate along later.
 
-        if len(batch) == batch_size or current == len(gtargets) - 1:
+        if len(batch) == batch_size or i == len(gtargets) - 1:
             # batch is full, or we are at the last instance, run it through the model
 
             b = len(batch)
