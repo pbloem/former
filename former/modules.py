@@ -72,8 +72,8 @@ class SelfAttention(nn.Module):
         queries = queries.transpose(1, 2).contiguous().view(b * h, t, s)
         values = values.transpose(1, 2).contiguous().view(b * h, t, s)
 
-        queries = queries / (e ** (1/4))
-        keys    = keys / (e ** (1/4))
+        queries = queries / (s ** (1/4))
+        keys    = keys / (s ** (1/4))
         # - Instead of dividing the dot products by sqrt(e), we scale the keys and values.
         #   This should be more memory efficient
 
@@ -155,8 +155,8 @@ class SelfAttentionAlt(nn.Module):
         queries = queries.transpose(1, 2).contiguous().view(b * h, t, s)
         values = values.transpose(1, 2).contiguous().view(b * h, t, s)
 
-        queries = queries / (e ** (1/4))
-        keys    = keys / (e ** (1/4))
+        queries = queries / (s ** (1/4))
+        keys    = keys / (s ** (1/4))
         # - Instead of dividing the dot products by sqrt(e), we scale the keys and values.
         #   This should be more memory efficient
 
@@ -233,8 +233,8 @@ class SelfAttentionNarrow(nn.Module):
         queries = queries.transpose(1, 2).contiguous().view(b * h, t, s)
         values = values.transpose(1, 2).contiguous().view(b * h, t, s)
 
-        queries = queries / (e ** (1/4))
-        keys    = keys / (e ** (1/4))
+        queries = queries / (s ** (1/4))
+        keys    = keys / (s ** (1/4))
         # - Instead of dividing the dot products by sqrt(e), we scale the keys and values.
         #   This should be more memory efficient
 
@@ -639,8 +639,8 @@ class Attention(nn.Module):
         keys = keys.transpose(1, 2).contiguous().view(b * h, tk, s)
         values = values.transpose(1, 2).contiguous().view(b * h, tk, s)
 
-        queries = queries / (e ** (1/4))
-        keys    = keys / (e ** (1/4))
+        queries = queries / (s ** (1/4))
+        keys    = keys / (s ** (1/4))
         # - Instead of dividing the dot products by sqrt(e), we scale the keys and values.
         #   This should be more memory efficient
 
