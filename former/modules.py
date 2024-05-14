@@ -11,13 +11,14 @@ class SelfAttention(nn.Module):
     Canonical implementation of multi-head self attention.
     """
 
-    def __init__(self, emb, heads=8, mask=False, kqnorm=False):
+    def __init__(self, emb, heads=8, mask=False, kqnorm=False, scalefactor=None):
         """
 
-        :param emb:
-        :param heads:
-        :param mask:
-        :param kqnorm:
+        :param emb: The dimension of the input and output vectors.
+        :param heads: The number of heads (parallel executions of the self-attention)
+        :param mask: Whether to apply an autoregressive mask.
+        :param kqnorm: Whether to apply layer normalization to the keys and queries.
+        :param scalefactor: Multiplier for the attention weights. If none, the default `1/sqrt(emb/heads)` is used,
         """
 
         super().__init__()
@@ -41,6 +42,8 @@ class SelfAttention(nn.Module):
         if kqnorm:
             self.kln = nn.LayerNorm([s])
             self.qln = nn.LayerNorm([s])
+
+        self.scalefactor = 1/sqrt(emb // heads) if scalefactor is None else scalefactor
 
     def forward(self, x):
 
@@ -72,13 +75,12 @@ class SelfAttention(nn.Module):
         queries = queries.transpose(1, 2).contiguous().view(b * h, t, s)
         values = values.transpose(1, 2).contiguous().view(b * h, t, s)
 
-        queries = queries / (s ** (1/4))
-        keys    = keys / (s ** (1/4))
-        # - Instead of dividing the dot products by sqrt(e), we scale the keys and values.
-        #   This should be more memory efficient
+        queries = queries
+        keys    = keys
 
         # - get dot product of queries and keys, and scale
         dot = torch.bmm(queries, keys.transpose(1, 2))
+        dot = dot * self.scalefactor
 
         assert dot.size() == (b*h, t, t)
 
@@ -86,7 +88,7 @@ class SelfAttention(nn.Module):
             mask_(dot, maskval=float('-inf'), mask_diagonal=False)
 
         dot = F.softmax(dot, dim=2)
-        # - dot now has row-wise self-attention probabilities
+        # -- dot now has row-wise self-attention probabilities
 
         # apply the self attention to the values
         out = torch.bmm(dot, values).view(b, h, t, s)

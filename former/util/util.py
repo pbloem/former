@@ -421,6 +421,7 @@ def estimate_compression(model, data, nsamples, context, batch_size, verbose=Fal
             all = torch.cat(batch, dim=0)
             inputs = all[:, :-1] # input
             target = all[:, -1]  # target values
+            # -- I think this is wrong?
 
             with torch.no_grad():
                 if next(model.parameters()).is_cuda:
