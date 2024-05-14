@@ -43,7 +43,7 @@ class SelfAttention(nn.Module):
             self.kln = nn.LayerNorm([s])
             self.qln = nn.LayerNorm([s])
 
-        self.scalefactor = 1/sqrt(emb // heads) if scalefactor is None else scalefactor
+        self.scalefactor = 1/math.sqrt(emb // heads) if scalefactor is None else scalefactor
 
     def forward(self, x):
 
