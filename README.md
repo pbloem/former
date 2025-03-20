@@ -1,3 +1,5 @@
+This repository is no longer maintained. For the latest version, see https://codeberg.org/pbm/former
+
 # former
 
 Simple transformer implementation from scratch in pytorch. See http://peterbloem.nl/blog/transformers for an in-depth explanation.
